@@ -1,0 +1,276 @@
+diff -ruN '--exclude=*.bak*' '--exclude=assets' '--exclude=jniLibs' '--exclude=*.txt' -x '*.xz' orig/app/build.gradle newt/app/build.gradle
+--- a/app/build.gradle	2026-10-18 09:16:50.990579918 +0000
++++ b/app/build.gradle	2026-10-18 09:16:51.006899236 +0000
+@@ -10,8 +10,8 @@
+         applicationId 'com.paynux'
+         minSdk 23
+         targetSdk 28
+-        versionCode 3
+-        versionName '0.3.0'
++        versionCode 4
++        versionName '0.3.1'
+     }
+ 
+     packaging {
+diff -ruN '--exclude=*.bak*' '--exclude=assets' '--exclude=jniLibs' '--exclude=*.txt' -x '*.xz' orig/app/src/main/java/com/paynux/MainActivity.java newt/app/src/main/java/com/paynux/MainActivity.java
+--- a/app/src/main/java/com/paynux/MainActivity.java	2026-10-18 09:16:50.983002270 +0000
++++ b/app/src/main/java/com/paynux/MainActivity.java	2026-10-18 09:16:50.993664549 +0000
+@@ -131,6 +131,7 @@
+             return;
+         }
+         bootStarted = true;
++        bootBusy = true;
+         startFocusGuard();
+         startCursorBlink();
+ 
+@@ -153,6 +154,8 @@
+                         );
+ 
+                         e.printStackTrace();
++                    } finally {
++                        bootBusy = false;
+                     }
+                 },
+                 "Paynux-Boot"
+@@ -160,6 +163,7 @@
+     }
+ 
+     private volatile boolean bootStarted = false;
++    private volatile boolean bootBusy = false;
+ 
+     /**
+      * Banner sambutan. Log boot rutin ("Preparing...", "Runtime
+@@ -1061,14 +1065,26 @@
+                 if (sc == active) scheduleRender();
+             }
+             @Override public void onExit(int code) {
++                final boolean wasReady = sc.ready;
+                 sc.ready = false;
+                 sc.exited = true;
+                 feedTo(sc.emu, "\n\n[Ubuntu process exited] code=" + code + "\n");
++                if (sessions.size() <= 1) {
++                    feedTo(sc.emu, "[Ketuk tombol sesi, tahan sesi ini, lalu Tutup"
++                            + " untuk memulai sesi baru]\n");
++                }
+                 if (sc == active) {
+                     shellReady = false;
+                     scheduleRender();
+                 }
+-                runOnUiThread(() -> updateSessionButton());
++                runOnUiThread(() -> {
++                    // 'exit' di shell = tutup tab otomatis (bila bukan yang terakhir)
++                    if (wasReady && sessions.contains(sc) && sessions.size() > 1) {
++                        closeSession(sc);
++                    } else {
++                        updateSessionButton();
++                    }
++                });
+             }
+             @Override public void onStatus(String line) {
+                 feedTo(sc.emu, line + "\n");
+@@ -1153,13 +1169,48 @@
+         }, "Paynux-NewSession").start();
+     }
+ 
+-    private void closeSession(Sess sc) {
+-        if (sessions.size() <= 1) {
++    /**
++     * Menutup sesi TERAKHIR = mengganti dengan sesi baru (terminal tidak
++     * pernah kosong). prepareRuntime() dipanggil ulang (idempotent) supaya
++     * boot yang gagal (mis. ekstraksi rootfs) bisa dicoba lagi tanpa
++     * menutup aplikasi.
++     */
++    private void replaceLastSession(final Sess old) {
++        if (restarting || bootBusy) {
+             android.widget.Toast.makeText(this,
+-                    "Minimal satu sesi harus tetap ada",
++                    "Sesi sedang dimulai, tunggu sebentar",
+                     android.widget.Toast.LENGTH_SHORT).show();
+             return;
+         }
++        restarting = true;
++        try { if (old.ts != null) old.ts.finish(); } catch (Exception ignored) { }
++        old.ready = false;
++        final Sess sc = createSess();
++        sessions.add(sc);
++        sessions.remove(old);
++        activate(sc);
++        showBanner();
++        new Thread(() -> {
++            try {
++                prepareRuntime();
++                startUbuntu(sc);
++            } catch (Exception e) {
++                feedTo(sc.emu, "\n[PAYNUX ERROR]\n"
++                        + e.getClass().getName() + "\n"
++                        + String.valueOf(e.getMessage()) + "\n");
++                if (sc == active) scheduleRender();
++            } finally {
++                restarting = false;
++            }
++        }, "Paynux-ReplaceSession").start();
++    }
++
++    private void closeSession(Sess sc) {
++        if (!sessions.contains(sc)) return;
++        if (sessions.size() <= 1) {
++            replaceLastSession(sc);
++            return;
++        }
+         int idx = sessions.indexOf(sc);
+         try { if (sc.ts != null) sc.ts.finish(); } catch (Exception ignored) { }
+         sc.ready = false;
+@@ -1961,14 +2012,24 @@
+         // TAR (plain, archive is already decompressed)
+         // --------------------------------------------------------
+ 
++        /*
++         * toybox tar di Android 12 (dan lebih lama) TIDAK mengenal
++         * --strip-components. Ekstrak ke folder staging, lalu pindahkan
++         * ubuntu/rootfs -> ubuntuDir dengan rename (atomik, tanpa salin).
++         */
++        File stageDir = new File(getFilesDir(), "ubuntu-stage");
++        rmrf(stageDir);
++        if (!stageDir.mkdirs() && !stageDir.isDirectory()) {
++            throw new Exception("Cannot create staging directory: " + stageDir);
++        }
++
+         ProcessBuilder pb =
+                 new ProcessBuilder(
+                         "/system/bin/tar",
+                         "-xf",
+                         decompressed.getAbsolutePath(),
+                         "-C",
+-                        ubuntuDir.getAbsolutePath(),
+-                        "--strip-components=2"
++                        stageDir.getAbsolutePath()
+                 );
+ 
+         pb.redirectErrorStream(
+@@ -2009,6 +2070,18 @@
+             );
+         }
+ 
++        File stagedRoot = new File(stageDir, "ubuntu/rootfs");
++        if (!stagedRoot.isDirectory()) {
++            throw new Exception(
++                    "Archive layout unexpected, missing: " + stagedRoot);
++        }
++        rmrf(ubuntuDir);   // buang sisa ekstraksi gagal sebelumnya
++        if (!stagedRoot.renameTo(ubuntuDir)) {
++            throw new Exception(
++                    "Cannot move rootfs into place: " + ubuntuDir);
++        }
++        rmrf(stageDir);    // sisa: manifest.json + folder kosong
++
+         // --------------------------------------------------------
+         // VERIFY ROOTFS
+         // --------------------------------------------------------
+@@ -2117,6 +2190,23 @@
+         }
+     }
+ 
++    /** Hapus rekursif tanpa mengikuti symlink (rm -rf bawaan Android). */
++    private void rmrf(File f) {
++        if (f == null || !f.exists()) return;
++        try {
++            Process c = new ProcessBuilder("/system/bin/chmod", "-R", "u+rwx",
++                    f.getAbsolutePath()).redirectErrorStream(true).start();
++            while (c.getInputStream().read() != -1) { }
++            c.waitFor();
++        } catch (Exception ignored) { }
++        try {
++            Process p = new ProcessBuilder("/system/bin/rm", "-rf",
++                    f.getAbsolutePath()).redirectErrorStream(true).start();
++            while (p.getInputStream().read() != -1) { }
++            p.waitFor();
++        } catch (Exception ignored) { }
++    }
++
+     // ============================================================
+     // COPY ASSET
+     // ============================================================
+diff -ruN '--exclude=*.bak*' '--exclude=assets' '--exclude=jniLibs' '--exclude=*.txt' -x '*.xz' orig/app/src/main/java/com/paynux/terminal/TerminalSession.java newt/app/src/main/java/com/paynux/terminal/TerminalSession.java
+--- a/app/src/main/java/com/paynux/terminal/TerminalSession.java	2026-10-18 09:16:50.983354382 +0000
++++ b/app/src/main/java/com/paynux/terminal/TerminalSession.java	2026-10-18 09:16:50.994001083 +0000
+@@ -33,6 +33,8 @@
+     private final Callback callback;
+ 
+     private long handle = -1;          // pty handle (>=0 when pty active)
++    private final Object ptyLock = new Object();
++    private boolean ptyClosed = false;  // dijaga ptyLock; nativeClose hanya sekali
+     private boolean ptyMode;
+     private Process pipeProcess;       // fallback transport
+     private OutputStream pipeIn;
+@@ -155,17 +157,28 @@
+                 Thread.sleep(100);
+             if (PtyNative.nativeIsAlive(handle) == 0) rc = PtyNative.nativeWait(handle);
+         } catch (Throwable ignored) {}
+-        try { PtyNative.nativeClose(handle); } catch (Throwable ignored) {}
++        closePtyOnce();
+         exitCode = rc;
+         running = false;
+         if (!suppressExitCallback) callback.onExit(rc);
+     }
+ 
++    private void closePtyOnce() {
++        synchronized (ptyLock) {
++            if (ptyClosed || handle < 0) return;
++            ptyClosed = true;
++            try { PtyNative.nativeClose(handle); } catch (Throwable ignored) {}
++        }
++    }
++
+     /** Write raw bytes to the active shell (pty master or process stdin). */
+     public void write(byte[] data, int off, int len) {
+         if (!running || len <= 0) return;
+         if (ptyMode) {
+-            try { PtyNative.nativeWrite(handle, data, off, len); } catch (Throwable ignored) {}
++            synchronized (ptyLock) {
++                if (ptyClosed) return;
++                try { PtyNative.nativeWrite(handle, data, off, len); } catch (Throwable ignored) {}
++            }
+         } else if (pipeIn != null) {
+             try {
+                 pipeIn.write(data, off, len);
+@@ -185,8 +198,10 @@
+     }
+ 
+     public void resize(int rows, int cols) {
+-        if (ptyMode && handle >= 0) {
+-            try { PtyNative.nativeResize(handle, rows, cols); } catch (Throwable ignored) {}
++        synchronized (ptyLock) {
++            if (ptyMode && handle >= 0 && !ptyClosed) {
++                try { PtyNative.nativeResize(handle, rows, cols); } catch (Throwable ignored) {}
++            }
+         }
+     }
+ 
+@@ -194,9 +209,12 @@
+     public synchronized void finish() {
+         running = false;
+         suppressExitCallback = true;
+-        if (ptyMode && handle >= 0) {
+-            try { PtyNative.nativeKill(handle, 9); } catch (Throwable ignored) {}
+-            try { PtyNative.nativeClose(handle); } catch (Throwable ignored) {}
++        // Hanya kill: handle ditutup SEKALI oleh thread pembaca (finishPty)
++        // setelah proses mati, agar tidak ada close ganda / use-after-close.
++        synchronized (ptyLock) {
++            if (ptyMode && handle >= 0 && !ptyClosed) {
++                try { PtyNative.nativeKill(handle, 9); } catch (Throwable ignored) {}
++            }
+         }
+         if (pipeProcess != null) {
+             try { pipeProcess.getOutputStream().close(); } catch (Exception ignored) {}
+@@ -210,7 +228,10 @@
+     /** True when the session is alive but produced no output for a while. */
+     public boolean isAlive() {
+         if (ptyMode && handle >= 0) {
+-            try { return PtyNative.nativeIsAlive(handle) != 0; } catch (Throwable t) { return false; }
++            synchronized (ptyLock) {
++                if (ptyClosed) return false;
++                try { return PtyNative.nativeIsAlive(handle) != 0; } catch (Throwable t) { return false; }
++            }
+         }
+         return pipeProcess != null && pipeProcess.isAlive();
+     }

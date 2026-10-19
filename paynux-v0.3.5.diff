@@ -1,0 +1,121 @@
+diff -ruN '--exclude=*.bak*' '--exclude=assets' '--exclude=jniLibs' '--exclude=*.txt' o5/app/build.gradle n5/app/build.gradle
+--- a/app/build.gradle	2026-10-18 14:59:41.919254296 +0000
++++ b/app/build.gradle	2026-10-18 14:59:42.010022881 +0000
+@@ -10,8 +10,8 @@
+         applicationId 'com.paynux'
+         minSdk 23
+         targetSdk 28
+-        versionCode 7
+-        versionName '0.3.4'
++        versionCode 8
++        versionName '0.3.5'
+     }
+ 
+     packaging {
+diff -ruN '--exclude=*.bak*' '--exclude=assets' '--exclude=jniLibs' '--exclude=*.txt' o5/app/src/main/java/com/paynux/terminal/TerminalEmulator.java n5/app/src/main/java/com/paynux/terminal/TerminalEmulator.java
+--- a/app/src/main/java/com/paynux/terminal/TerminalEmulator.java	2026-10-18 14:59:41.911035079 +0000
++++ b/app/src/main/java/com/paynux/terminal/TerminalEmulator.java	2026-10-18 14:59:41.921098662 +0000
+@@ -289,7 +289,7 @@
+             case '(': case ')': case '*': case '+': state = ST_CHARSET; break;
+             case '7': savedRow = curRow; savedCol = curCol; savedAttrs = curAttrs;
+                       savedFg = curFg; savedBg = curBg; state = ST_GROUND; break;
+-            case '8': curRow = savedRow; curCol = savedCol; curAttrs = savedAttrs;
++            case '8': curRow = Math.min(savedRow, rows - 1); curCol = Math.min(savedCol, cols - 1); curAttrs = savedAttrs;
+                       curFg = savedFg; curBg = savedBg; state = ST_GROUND; break;
+             case 'D': lineFeed(); state = ST_GROUND; break;
+             case 'E': curCol = 0; lineFeed(); state = ST_GROUND; break;
+@@ -424,14 +424,48 @@
+             altActive = true;
+             curRow = 0; curCol = 0;
+         } else {
+-            if (altScreen != null) screen = altScreen;
++            if (altScreen != null) screen = fitScreen(altScreen);
+             altScreen = null;
+             altActive = false;
++            clampCursor();
+         }
+         scrollBottom = rows - 1;
+         markScreen();
+     }
+ 
++    /**
++     * Buffer primer yang disimpan saat masuk alt screen TIDAK ikut
++     * di-resize (mis. keyboard muncul / rotasi saat vim, nano, htop
++     * terbuka). Saat keluar, sesuaikan lebar & jumlah barisnya dengan
++     * ukuran terminal sekarang; kelebihan baris teratas masuk scrollback.
++     */
++    private Line[] fitScreen(Line[] src) {
++        Line[] out = new Line[rows];
++        int drop = Math.max(0, src.length - rows);
++        for (int r = 0; r < drop; r++) {
++            scrollback.addLast(src[r]);
++            if (scrollback.size() > MAX_SCROLLBACK) scrollback.removeFirst();
++        }
++        if (drop > 0) scrollDirty = true;
++        for (int i = 0; i < rows; i++) {
++            int si = i + drop;
++            out[i] = si < src.length ? resizeLine(src[si], cols) : new Line(cols);
++        }
++        curRow = Math.max(0, curRow - drop);
++        savedRow = Math.max(0, savedRow - drop);
++        return out;
++    }
++
++    private void clampCursor() {
++        curRow = Math.max(0, Math.min(curRow, rows - 1));
++        curCol = Math.max(0, Math.min(curCol, cols - 1));
++        savedRow = Math.max(0, Math.min(savedRow, rows - 1));
++        savedCol = Math.max(0, Math.min(savedCol, cols - 1));
++        scrollTop = 0;
++        scrollBottom = rows - 1;
++        wrapPending = false;
++    }
++
+     private void sgr() {
+         int n = Math.max(nParams, 1);
+         for (int i = 0; i < n; i++) {
+@@ -517,7 +551,15 @@
+             if (autowrap) { curCol = 0; lineFeed(); }
+             else curCol = Math.max(0, cols - w);
+         }
++        if (curRow < 0) curRow = 0;
++        if (curRow >= screen.length) curRow = screen.length - 1;
+         Line l = screen[curRow];
++        if (l.text.length != cols) {            // baris lama beda lebar: samakan
++            l = resizeLine(l, cols);
++            screen[curRow] = l;
++        }
++        if (curCol < 0) curCol = 0;
++        if (curCol >= cols) curCol = cols - 1;
+         l.text[curCol] = c;
+         l.fg[curCol] = curFg;
+         l.bg[curCol] = curBg;
+diff -ruN '--exclude=*.bak*' '--exclude=assets' '--exclude=jniLibs' '--exclude=*.txt' o5/app/src/main/java/com/paynux/terminal/TerminalSession.java n5/app/src/main/java/com/paynux/terminal/TerminalSession.java
+--- a/app/src/main/java/com/paynux/terminal/TerminalSession.java	2026-10-18 14:59:41.911061356 +0000
++++ b/app/src/main/java/com/paynux/terminal/TerminalSession.java	2026-10-18 14:59:41.921124271 +0000
+@@ -119,7 +119,11 @@
+             }
+             if (n > 0) {
+                 idle = 0;
+-                emulator.feed(buf, 0, n);
++                try {
++                    emulator.feed(buf, 0, n);
++                } catch (RuntimeException ex) {
++                    // bug parser/emulator: jangan matikan aplikasi, lanjut baca
++                }
+                 callback.onOutput();
+             } else if (n < 0) {
+                 break;
+@@ -136,7 +140,11 @@
+             byte[] buf = new byte[4096];
+             int n;
+             while ((n = in.read(buf)) != -1) {
+-                emulator.feed(buf, 0, n);
++                try {
++                    emulator.feed(buf, 0, n);
++                } catch (RuntimeException ex) {
++                    // lihat ptyReadLoop
++                }
+                 callback.onOutput();
+             }
+             int rc = pipeProcess.waitFor();

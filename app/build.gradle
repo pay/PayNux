@@ -1,0 +1,22 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.paynux'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'com.paynux'
+        minSdk 23
+        targetSdk 28
+        versionCode 10
+        versionName '0.3.7'
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging true
+        }
+    }
+}

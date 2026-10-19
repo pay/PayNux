@@ -1,0 +1,205 @@
+diff -ruN '--exclude=*.bak*' '--exclude=assets' '--exclude=jniLibs' '--exclude=*.txt' o6/app/build.gradle n6/app/build.gradle
+--- a/app/build.gradle	2026-10-18 15:09:31.861498810 +0000
++++ b/app/build.gradle	2026-10-18 15:09:31.949294493 +0000
+@@ -10,8 +10,8 @@
+         applicationId 'com.paynux'
+         minSdk 23
+         targetSdk 28
+-        versionCode 8
+-        versionName '0.3.5'
++        versionCode 9
++        versionName '0.3.6'
+     }
+ 
+     packaging {
+diff -ruN '--exclude=*.bak*' '--exclude=assets' '--exclude=jniLibs' '--exclude=*.txt' o6/app/src/main/AndroidManifest.xml n6/app/src/main/AndroidManifest.xml
+--- a/app/src/main/AndroidManifest.xml	2026-10-18 15:09:31.759614703 +0000
++++ b/app/src/main/AndroidManifest.xml	2026-10-18 15:09:31.867070925 +0000
+@@ -3,6 +3,7 @@
+ 
+     <uses-permission android:name="android.permission.INTERNET" />
+     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
++    <uses-permission android:name="android.permission.WAKE_LOCK" />
+ 
+     <application
+         android:theme="@style/AppTheme"
+diff -ruN '--exclude=*.bak*' '--exclude=assets' '--exclude=jniLibs' '--exclude=*.txt' o6/app/src/main/java/com/paynux/KeepAliveService.java n6/app/src/main/java/com/paynux/KeepAliveService.java
+--- a/app/src/main/java/com/paynux/KeepAliveService.java	2026-10-18 15:09:31.759355076 +0000
++++ b/app/src/main/java/com/paynux/KeepAliveService.java	2026-10-18 15:09:31.866879820 +0000
+@@ -6,17 +6,30 @@
+ import android.app.PendingIntent;
+ import android.app.Service;
+ import android.content.Intent;
++import android.graphics.drawable.Icon;
++import android.net.wifi.WifiManager;
+ import android.os.Build;
+ import android.os.IBinder;
++import android.os.PowerManager;
+ 
+ /**
+- * Foreground service tanpa logika: tugasnya hanya menaikkan prioritas
+- * proses Paynux (notifikasi "running") supaya Android tidak mematikan
+- * aplikasi dan sesi Ubuntu saat berada di latar belakang.
++ * Foreground service ala Termux: notifikasi "running" menjaga proses
++ * Paynux tetap hidup di latar belakang, dengan tombol:
++ *   - Acquire / Release wakelock (CPU + Wi-Fi tetap aktif saat layar mati)
++ *   - Exit (menutup aplikasi dan semua sesi)
++ * Wakelock default MATI (hemat baterai), dinyalakan manual seperti Termux.
+  */
+ public class KeepAliveService extends Service {
+ 
++    public static final String ACTION_WAKELOCK_ON = "com.paynux.WAKELOCK_ON";
++    public static final String ACTION_WAKELOCK_OFF = "com.paynux.WAKELOCK_OFF";
++    public static final String EXTRA_EXIT = "paynux_exit";
++
+     private static final String CHANNEL = "paynux_running";
++    private static final int NOTIF_ID = 1;
++
++    private PowerManager.WakeLock wakeLock;
++    private WifiManager.WifiLock wifiLock;
+ 
+     @Override
+     public IBinder onBind(Intent intent) {
+@@ -25,6 +38,58 @@
+ 
+     @Override
+     public int onStartCommand(Intent intent, int flags, int startId) {
++        String action = intent != null ? intent.getAction() : null;
++        if (ACTION_WAKELOCK_ON.equals(action)) {
++            acquireLocks();
++        } else if (ACTION_WAKELOCK_OFF.equals(action)) {
++            releaseLocks();
++        }
++        startForeground(NOTIF_ID, buildNotification());
++        return START_NOT_STICKY;
++    }
++
++    @Override
++    public void onDestroy() {
++        releaseLocks();
++        super.onDestroy();
++    }
++
++    private boolean locksHeld() {
++        return wakeLock != null && wakeLock.isHeld();
++    }
++
++    @SuppressWarnings("deprecation")
++    private void acquireLocks() {
++        try {
++            if (wakeLock == null) {
++                PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
++                wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Paynux:session");
++                wakeLock.setReferenceCounted(false);
++            }
++            if (!wakeLock.isHeld()) wakeLock.acquire();   // tanpa timeout, seperti Termux
++        } catch (Throwable ignored) { }
++        try {
++            if (wifiLock == null) {
++                WifiManager wm = (WifiManager) getApplicationContext()
++                        .getSystemService(WIFI_SERVICE);
++                if (wm != null) {
++                    wifiLock = wm.createWifiLock(
++                            WifiManager.WIFI_MODE_FULL_HIGH_PERF, "Paynux:wifi");
++                    wifiLock.setReferenceCounted(false);
++                }
++            }
++            if (wifiLock != null && !wifiLock.isHeld()) wifiLock.acquire();
++        } catch (Throwable ignored) { }
++    }
++
++    private void releaseLocks() {
++        try { if (wakeLock != null && wakeLock.isHeld()) wakeLock.release(); }
++        catch (Throwable ignored) { }
++        try { if (wifiLock != null && wifiLock.isHeld()) wifiLock.release(); }
++        catch (Throwable ignored) { }
++    }
++
++    private Notification buildNotification() {
+         Notification.Builder b;
+         if (Build.VERSION.SDK_INT >= 26) {
+             NotificationManager nm = getSystemService(NotificationManager.class);
+@@ -35,22 +100,37 @@
+             b = new Notification.Builder(this);
+         }
+ 
+-        Intent open = new Intent(this, MainActivity.class)
+-                .setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+-        PendingIntent pi = PendingIntent.getActivity(
+-                this, 0, open,
+-                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+-
+         int icon = getApplicationInfo().icon;
+         if (icon == 0) icon = android.R.drawable.sym_def_app_icon;
+ 
+-        Notification n = b.setContentTitle("Paynux")
+-                .setContentText("Ubuntu session is running")
++        int pif = PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT;
++        int actFlags = Intent.FLAG_ACTIVITY_NEW_TASK
++                | Intent.FLAG_ACTIVITY_SINGLE_TOP
++                | Intent.FLAG_ACTIVITY_CLEAR_TOP;
++
++        PendingIntent open = PendingIntent.getActivity(this, 0,
++                new Intent(this, MainActivity.class).setFlags(actFlags), pif);
++
++        PendingIntent exit = PendingIntent.getActivity(this, 1,
++                new Intent(this, MainActivity.class)
++                        .putExtra(EXTRA_EXIT, true).setFlags(actFlags), pif);
++
++        boolean held = locksHeld();
++        PendingIntent toggle = PendingIntent.getService(this, 2,
++                new Intent(this, KeepAliveService.class)
++                        .setAction(held ? ACTION_WAKELOCK_OFF : ACTION_WAKELOCK_ON), pif);
++
++        Icon ic = Icon.createWithResource(this, icon);
++        b.setContentTitle("Paynux")
++                .setContentText(held
++                        ? "Wake lock held - CPU and Wi-Fi stay on"
++                        : "Ubuntu session is running")
+                 .setSmallIcon(icon)
+-                .setContentIntent(pi)
++                .setContentIntent(open)
+                 .setOngoing(true)
+-                .build();
+-        startForeground(1, n);
+-        return START_NOT_STICKY;
++                .addAction(new Notification.Action.Builder(ic,
++                        held ? "Release wakelock" : "Acquire wakelock", toggle).build())
++                .addAction(new Notification.Action.Builder(ic, "Exit", exit).build());
++        return b.build();
+     }
+ }
+diff -ruN '--exclude=*.bak*' '--exclude=assets' '--exclude=jniLibs' '--exclude=*.txt' o6/app/src/main/java/com/paynux/MainActivity.java n6/app/src/main/java/com/paynux/MainActivity.java
+--- a/app/src/main/java/com/paynux/MainActivity.java	2026-10-18 15:09:31.759261569 +0000
++++ b/app/src/main/java/com/paynux/MainActivity.java	2026-10-18 15:09:31.866463121 +0000
+@@ -108,6 +108,13 @@
+     protected void onCreate(Bundle savedInstanceState) {
+         super.onCreate(savedInstanceState);
+ 
++        // Dibuka dari tombol "Exit" notifikasi saat Activity sudah tidak ada
++        if (getIntent() != null
++                && getIntent().getBooleanExtra(KeepAliveService.EXTRA_EXIT, false)) {
++            finish();
++            return;
++        }
++
+         installCrashLogger();
+         try {
+             android.content.Intent keep = new android.content.Intent(this, KeepAliveService.class);
+@@ -2669,6 +2676,16 @@
+     // ============================================================
+ 
+     @Override
++    protected void onNewIntent(android.content.Intent intent) {
++        super.onNewIntent(intent);
++        // tombol "Exit" di notifikasi: tutup aplikasi + semua sesi
++        if (intent != null
++                && intent.getBooleanExtra(KeepAliveService.EXTRA_EXIT, false)) {
++            finishAndRemoveTask();
++        }
++    }
++
++    @Override
+     protected void onDestroy() {
+ 
+         try { stopService(new android.content.Intent(this, KeepAliveService.class)); }

@@ -1,0 +1,93 @@
+5:import android.content.ClipboardManager;
+50:    private TextView scrollbackView;
+51:    private TextView screenView;
+147:                        appendOutput(
+173:        if (BOOT_VERBOSE) appendOutput(text);
+225:            appendOutput("\u001b[1;38;5;45mPAYNUX\u001b[0m \u001b[90mv" + ver + "\u001b[0m\n\n");
+239:        appendOutput("\n");
+247:            appendOutput(sb.toString());
+249:        appendOutput("  \u001b[90mUbuntu 24.04 \u00B7 PRoot \u00B7 v" + ver + "\u001b[0m\n");
+250:        appendOutput("  \u001b[38;5;240mNEW \u00B7 SESI \u00B7 COPY \u00B7 cubit=zoom\u001b[0m\n\n");
+372:        scrollbackView = new TextView(this);
+373:        scrollbackView.setTextColor(FG);
+374:        scrollbackView.setTextSize(fontSizeSp);
+375:        scrollbackView.setTypeface(Typeface.MONOSPACE);
+376:        scrollbackView.setGravity(Gravity.START);
+377:        scrollbackView.setPadding(16, 8, 16, 0);
+378:        scrollbackView.setTextIsSelectable(true);
+379:        scrollbackView.setLineSpacing(2, 1.0f);
+386:        screenView = new TextView(this);
+387:        screenView.setTextColor(FG);
+388:        screenView.setTextSize(fontSizeSp);
+389:        screenView.setTypeface(Typeface.MONOSPACE);
+390:        screenView.setGravity(Gravity.TOP | Gravity.START);
+391:        screenView.setPadding(16, 0, 16, 4);
+392:        screenView.setTextIsSelectable(true);
+393:        screenView.setLineSpacing(2, 1.0f);
+394:        screenView.setHorizontallyScrolling(true);
+399:        inner.addView(scrollbackView, new LinearLayout.LayoutParams(
+402:        inner.addView(screenView, new LinearLayout.LayoutParams(
+620:        terminalScroll.setOnTouchListener((v, ev) -> {
+707:            btn.setOnTouchListener((v, ev) -> {
+759:                    pasteFromClipboard();
+768:                    copyAllLog();
+790:    private void appendOutput(String text) {
+821:        renderScreen();
+842:        if (screenView == null) return;
+846:        screenView.post(renderRunnable);
+850:        screenView.postDelayed(() -> {
+865:        if (screenView == null) return;
+866:        CharSequence cs = screenView.getText();
+876:    private void renderScreen() {
+877:        if (emulator == null || screenView == null) return;
+879:        // menghapus seleksi -> "tidak bisa di-copy")
+880:        if (actionModeActive && screenView.hasSelection()) return;
+901:        screenView.setText(all, TextView.BufferType.SPANNABLE);
+977:        if (emulator == null || scrollbackView == null) return;
+978:        if (actionModeActive && scrollbackView.hasSelection()) return;
+987:            scrollbackView.setText(all, TextView.BufferType.SPANNABLE);
+995:            scrollbackView.append(add);
+1002:        if (emulator == null || terminalScroll == null || screenView == null)
+1007:        float charW = screenView.getPaint().measureText("M");
+1008:        int lineH = screenView.getLineHeight();
+1081:        if (scrollbackView != null) {
+1082:            scrollbackView.setTextIsSelectable(false);
+1083:            scrollbackView.setText("");
+1084:            scrollbackView.setTextIsSelectable(true);
+1086:        if (screenView != null) {
+1087:            screenView.setTextIsSelectable(false);
+1088:            screenView.setText("");
+1089:            screenView.setTextIsSelectable(true);
+1098:        renderScreen();
+1237:    private void copyAllLog() {
+1239:        ClipboardManager cm =
+1240:                (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+1256:        if (scrollbackView != null) scrollbackView.setTextSize(fontSizeSp);
+1257:        if (screenView != null) screenView.setTextSize(fontSizeSp);
+1272:            appendOutput("[Shell belum siap]\n");
+1309:            appendOutput("[Shell belum siap]\n");
+1411:    private void pasteFromClipboard() {
+1412:        ClipboardManager cm =
+1413:                (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+1415:            appendOutput("[clipboard kosong]\n");
+1498:         * instead of copying it into getFilesDir() first.
+1539:         * same way), so there is nothing left to copy - just
+1615:            java.nio.file.Files.copy(
+1683:            java.nio.file.Files.copy(
+1732:        appendOutput(
+1736:        appendOutput(
+1773:        appendOutput(
+1803:        appendOutput(
+1807:        copyAsset(
+1821:        appendOutput(
+1883:            appendOutput(
+1943:            appendOutput(
+1979:        appendOutput(
+1999:        appendOutput(
+2032:            appendOutput(
+2042:            appendOutput(
+2055:            appendOutput(
+2062:            appendOutput(
+2072:    private void copyAsset(
+2379:            if (screenView != null) {
+2380:                screenView.getRootView().getViewTreeObserver()

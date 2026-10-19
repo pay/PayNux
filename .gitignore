@@ -1,0 +1,59 @@
+# Gradle cache
+.gradle/
+**/.gradle/
+
+# Build outputs
+build/
+**/build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Android local configuration
+local.properties
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+
+# Generated packages
+*.apk
+*.aab
+
+# Signing keys and secrets
+*.jks
+*.keystore
+keystore.properties
+signing.properties
+local.properties
+
+# Backups and temporary files
+*.bak
+*.bak-*
+*.tmp
+*.log
+
+# Python cache, if any
+__pycache__/
+*.py[cod]
+
+# Local debugging evidence
+scratch/
+crash-evidence/
+checkpoints/
+*.hprof
+
+# Source and script backups
+*.orig
+*.pre-*
+*.bak[0-9]*
+*.bak
+*.bak-*
+*.v2-pre*
+
+# Source and script backups
+*.orig
+*.pre-*
+*.bak[0-9]*
+*.bak
+*.bak-*
+*.v2-pre*

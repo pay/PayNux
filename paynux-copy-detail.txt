@@ -1,0 +1,160 @@
+=== OUTPUT BUFFER ===
+    private void appendOutput(String text) {
+        if (emulator == null || text == null) return;
+        // status boot memakai \n telanjang; terminal butuh \r\n agar
+        // kolom kembali ke 0 (semantik ONLCR yang dijalankan tty asli)
+        emulator.feed(text.replace("\r\n", "\n").replace("\n", "\r\n"));
+    }
+
+    // ============================================================
+    // CLEAR (clear = escape sequence asli dari shell/tools)
+    // ============================================================
+
+    private void clearTerminal() {
+        if (emulator != null) {
+            emulator.feed("\u001b[H\u001b[2J\u001b[3J");
+            scheduleRender();
+        }
+    }
+
+    // ============================================================
+    // RENDER: emulator cell grid -> Spannable TextView
+    // ============================================================
+
+    private static final int CYAN_COLOR   = Color.rgb(51, 187, 200);
+    private static final int YELLOW_COLOR = Color.rgb(229, 192, 82);
+
+    private Button ctrlKeyBtn;
+    private Button altKeyBtn;
+    private int renderedScrollback = 0;
+
+    private final Runnable renderRunnable = () -> {
+        renderPending = false;
+        renderScreen();
+        syncScrollback();
+        if (userAtBottom) {
+            terminalScroll.post(this::scrollToBottom);
+        }
+=== SCREEN RENDER ===
+    private int cursorOffset = -1;
+
+    /** Pasang/lepas blok kursor langsung di teks yang sudah tampil
+     *  (tanpa setText -> tanpa relayout/gerak saat kursor berkedip). */
+    private void applyCursorSpan() {
+        if (screenView == null) return;
+        CharSequence cs = screenView.getText();
+        if (!(cs instanceof android.text.Spannable)) return;
+        android.text.Spannable sp = (android.text.Spannable) cs;
+        sp.removeSpan(cursorSpan);
+        if (cursorBlinkOn && cursorOffset >= 0 && cursorOffset < sp.length()) {
+            sp.setSpan(cursorSpan, cursorOffset, cursorOffset + 1,
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+    }
+
+    private void renderScreen() {
+        if (emulator == null || screenView == null) return;
+        // jangan timpa teks saat user sedang menyeleksi (setText
+        // menghapus seleksi -> "tidak bisa di-copy")
+        if (actionModeActive && screenView.hasSelection()) return;
+        int rows = emulator.getRows();
+        boolean curVis = emulator.isCursorVisible();
+        int curRow = emulator.getCursorRow();
+        int curCol = emulator.getCursorCol();
+        SpannableStringBuilder all = new SpannableStringBuilder();
+        cursorOffset = -1;
+        for (int r = 0; r < rows; r++) {
+            if (r > 0) all.append('\n');
+            int lineStart = all.length();
+            TerminalEmulator.Line ln = emulator.getScreenLine(r);
+            boolean isCur = curVis && r == curRow;
+            all.append(styleLine(ln, isCur ? curCol : -1, false));
+            if (isCur && ln != null) {
+                int n = 0;
+                for (int i = 0; i < curCol && i < ln.text.length; i++) {
+                    if (ln.text[i] != 0) n++;
+                }
+                cursorOffset = lineStart + n;
+            }
+        }
+        screenView.setText(all, TextView.BufferType.SPANNABLE);
+        applyCursorSpan();
+    }
+
+    private SpannableStringBuilder styleLine(TerminalEmulator.Line line,
+                                             int cursorCol) {
+        return styleLine(line, cursorCol, true);
+    }
+
+    private SpannableStringBuilder styleLine(TerminalEmulator.Line line,
+                                             int cursorCol,
+                                             boolean paintCursor) {
+        SpannableStringBuilder b = new SpannableStringBuilder();
+        if (line == null) return b;
+        int end = line.text.length;
+=== SCROLLBACK RENDER ===
+                b.setSpan(new StyleSpan(Typeface.ITALIC), start, b.length(),
+                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            if ((at & TerminalEmulator.ATTR_UNDERLINE) != 0)
+                b.setSpan(new UnderlineSpan(), start, b.length(),
+                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            i = j;
+        }
+        return b;
+    }
+
+    /** Sinkronkan scrollback: append bila bertambah, rebuild bila berkurang. */
+    private void syncScrollback() {
+        if (emulator == null || scrollbackView == null) return;
+        if (actionModeActive && scrollbackView.hasSelection()) return;
+        int total = emulator.getScrollbackSize();
+        if (total == renderedScrollback) return;
+        if (total < renderedScrollback) {
+            SpannableStringBuilder all = new SpannableStringBuilder();
+            for (int i = 0; i < total; i++) {
+                all.append(styleLine(emulator.getScrollbackLine(i), -1));
+                all.append('\n');
+            }
+            scrollbackView.setText(all, TextView.BufferType.SPANNABLE);
+            renderedScrollback = total;
+        } else {
+            SpannableStringBuilder add = new SpannableStringBuilder();
+            for (int i = renderedScrollback; i < total; i++) {
+                add.append(styleLine(emulator.getScrollbackLine(i), -1));
+                add.append('\n');
+            }
+            scrollbackView.append(add);
+            renderedScrollback = total;
+        }
+    }
+
+    /** Hitung rows/cols dari ukuran layar & font; resize bila berubah. */
+=== COPY ALL LOG ===
+
+    private void appendLine(StringBuilder out, TerminalEmulator.Line ln) {
+        if (ln == null) { out.append('\n'); return; }
+        int e = ln.text.length;
+        while (e > 0 && (ln.text[e - 1] == ' ' || ln.text[e - 1] == 0)) e--;
+        for (int i = 0; i < e; i++) if (ln.text[i] != 0) out.append(ln.text[i]);
+        out.append('\n');
+    }
+
+    private void copyAllLog() {
+        String t = getTranscript();
+        ClipboardManager cm =
+                (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        if (cm == null || t.isEmpty()) {
+            android.widget.Toast.makeText(this, "Log kosong",
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        cm.setPrimaryClip(ClipData.newPlainText("paynux-log", t));
+        int lines = 1;
+        for (int i = 0; i < t.length(); i++) if (t.charAt(i) == '\n') lines++;
+        android.widget.Toast.makeText(this,
+                "Log tersalin (" + lines + " baris)",
+                android.widget.Toast.LENGTH_SHORT).show();
+    }
+
+    private void changeFontSize(int delta) {
+        fontSizeSp = Math.max(8, Math.min(24, fontSizeSp + delta));

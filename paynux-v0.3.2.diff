@@ -1,0 +1,372 @@
+diff -ruN '--exclude=*.bak*' '--exclude=assets' '--exclude=jniLibs' '--exclude=*.txt' o2/app/build.gradle n2/app/build.gradle
+--- a/app/build.gradle	2026-10-18 09:35:28.251595377 +0000
++++ b/app/build.gradle	2026-10-18 09:40:38.829792954 +0000
+@@ -10,8 +10,8 @@
+         applicationId 'com.paynux'
+         minSdk 23
+         targetSdk 28
+-        versionCode 4
+-        versionName '0.3.1'
++        versionCode 5
++        versionName '0.3.2'
+     }
+ 
+     packaging {
+diff -ruN '--exclude=*.bak*' '--exclude=assets' '--exclude=jniLibs' '--exclude=*.txt' o2/app/src/main/java/com/paynux/MainActivity.java n2/app/src/main/java/com/paynux/MainActivity.java
+--- a/app/src/main/java/com/paynux/MainActivity.java	2026-10-18 09:35:28.240889169 +0000
++++ b/app/src/main/java/com/paynux/MainActivity.java	2026-10-18 09:40:37.326187060 +0000
+@@ -250,8 +250,23 @@
+             sb.append("\u001b[0m\n");
+             appendOutput(sb.toString());
+         }
+-        appendOutput("  \u001b[90mUbuntu 24.04 \u00B7 PRoot \u00B7 v" + ver + "\u001b[0m\n");
+-        appendOutput("  \u001b[38;5;240mNEW \u00B7 SESI \u00B7 COPY \u00B7 cubit=zoom\u001b[0m\n\n");
++        // pemisah gradasi selebar logo
++        int sepLen = Math.min(22, Math.max(8, cols - 4));
++        StringBuilder sep = new StringBuilder("  ");
++        for (int i = 0; i < sepLen; i++) {
++            int sh = shade[Math.min(shade.length - 1, i * shade.length / sepLen)];
++            sep.append("\u001b[38;5;").append(sh).append("m\u2501");
++        }
++        sep.append("\u001b[0m\n");
++        appendOutput(sep.toString());
++
++        String dot = "\u001b[38;5;45m\u2022\u001b[0m ";
++        appendOutput("  " + dot + "\u001b[97mUbuntu 24.04\u001b[0m"
++                + " \u001b[90m\u00B7 ARM64 \u00B7 PRoot\u001b[0m\n");
++        appendOutput("  " + dot + "\u001b[97mAndroid "
++                + android.os.Build.VERSION.RELEASE + "\u001b[0m"
++                + " \u001b[90m\u00B7 v" + ver + "\u001b[0m\n");
++        appendOutput("  \u001b[38;5;240mcubit = zoom \u00B7 hold a session = close\u001b[0m\n\n");
+     }
+ 
+     private volatile boolean actionModeActive = false;
+@@ -500,7 +515,7 @@
+             {"TAB",  "\t"},
+             {"CTRL", ""},
+             {"ALT",  ""},
+-            {"SESI", ""},
++            {"SESS", ""},
+             {"NEW",  ""},
+             {"\u2190", "\u001b[D"},
+             {"\u2191", "\u001b[A"},
+@@ -522,7 +537,7 @@
+ 
+         for (String[] k : row1) {
+             keyRow.addView(makeKey(k[0], k[1]),
+-                    new LinearLayout.LayoutParams(dp(k[0].length() > 2 ? 54 : 44), dp(42)));
++                    new LinearLayout.LayoutParams(dp(k[0].length() > 2 ? 48 : 38), dp(34)));
+         }
+         keyBar.addView(keyScroll, new LinearLayout.LayoutParams(
+                 LinearLayout.LayoutParams.MATCH_PARENT,
+@@ -676,7 +691,7 @@
+     private Button makeKey(String label, String seq) {
+         Button btn = new Button(this);
+         btn.setText(label);
+-        btn.setTextSize(12);
++        btn.setTextSize(11);
+         btn.setTextColor(CYAN_COLOR);
+         btn.setAllCaps(false);
+         btn.setIncludeFontPadding(false);
+@@ -698,7 +713,7 @@
+ 
+         if (label.equals("CTRL")) ctrlKeyBtn = btn;
+         if (label.equals("ALT"))  altKeyBtn  = btn;
+-        if (label.equals("SESI")) { sessBtn = btn; }
++        if (label.equals("SESS")) { sessBtn = btn; }
+ 
+         if (isRepeatable(label)) {
+             // tahan = ulang otomatis (navigasi histori / kursor)
+@@ -764,7 +779,7 @@
+                 case "NEW":
+                     newSession();
+                     break;
+-                case "SESI":
++                case "SESS":
+                     showSessionList();
+                     break;
+                 case "COPY":
+@@ -1070,8 +1085,8 @@
+                 sc.exited = true;
+                 feedTo(sc.emu, "\n\n[Ubuntu process exited] code=" + code + "\n");
+                 if (sessions.size() <= 1) {
+-                    feedTo(sc.emu, "[Ketuk tombol sesi, tahan sesi ini, lalu Tutup"
+-                            + " untuk memulai sesi baru]\n");
++                    feedTo(sc.emu, "[Tap the session button, long-press this session, then Close"
++                            + " to start a new one]\n");
+                 }
+                 if (sc == active) {
+                     shellReady = false;
+@@ -1146,7 +1161,7 @@
+         if (restarting) return;
+         if (sessions.size() >= MAX_SESSIONS) {
+             android.widget.Toast.makeText(this,
+-                    "Maksimal " + MAX_SESSIONS + " sesi",
++                    "Maximum " + MAX_SESSIONS + " sessions",
+                     android.widget.Toast.LENGTH_SHORT).show();
+             return;
+         }
+@@ -1159,7 +1174,7 @@
+             try {
+                 startUbuntu(sc);
+             } catch (Exception e) {
+-                feedTo(sc.emu, "[PAYNUX ERROR] sesi baru gagal: "
++                feedTo(sc.emu, "[PAYNUX ERROR] new session failed: "
+                         + e.getClass().getName() + " "
+                         + String.valueOf(e.getMessage()) + "\n");
+                 if (sc == active) scheduleRender();
+@@ -1178,7 +1193,7 @@
+     private void replaceLastSession(final Sess old) {
+         if (restarting || bootBusy) {
+             android.widget.Toast.makeText(this,
+-                    "Sesi sedang dimulai, tunggu sebentar",
++                    "Session is starting, please wait",
+                     android.widget.Toast.LENGTH_SHORT).show();
+             return;
+         }
+@@ -1242,23 +1257,23 @@
+         String[] items = new String[snap.size()];
+         for (int i = 0; i < snap.size(); i++) {
+             Sess sc = snap.get(i);
+-            String st = sc.exited ? "selesai" : (sc.ready ? "berjalan" : "memulai");
++            String st = sc.exited ? "exited" : (sc.ready ? "running" : "starting");
+             String pv = sessionPreview(sc);
+             items[i] = (sc == active ? "\u25B6 " : "   ")
+-                    + "Sesi " + sc.id + " \u00B7 " + st
++                    + "Session " + sc.id + " \u00B7 " + st
+                     + (pv.isEmpty() ? "" : "\n     " + pv);
+         }
+         android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(
+                 this, android.R.style.Theme_Material_Dialog_Alert)
+-                .setTitle("Sesi terminal (tekan lama = tutup)")
++                .setTitle("Terminal sessions (long-press = close)")
+                 .setItems(items, (d, which) -> {
+                     if (which >= 0 && which < snap.size()
+                             && sessions.contains(snap.get(which))) {
+                         activate(snap.get(which));
+                     }
+                 })
+-                .setPositiveButton("+ Sesi baru", (d, w) -> newSession())
+-                .setNegativeButton("Tutup", null)
++                .setPositiveButton("+ New session", (d, w) -> newSession())
++                .setNegativeButton("Close", null)
+                 .create();
+         dlg.show();
+         dlg.getListView().setOnItemLongClickListener((parent, v, pos, id) -> {
+@@ -1267,10 +1282,10 @@
+                 dlg.dismiss();
+                 new android.app.AlertDialog.Builder(this,
+                         android.R.style.Theme_Material_Dialog_Alert)
+-                        .setMessage("Tutup Sesi " + target.id + "?")
+-                        .setPositiveButton("Tutup",
++                        .setMessage("Close session " + target.id + "?")
++                        .setPositiveButton("Close",
+                                 (d2, w2) -> closeSession(target))
+-                        .setNegativeButton("Batal", null)
++                        .setNegativeButton("Cancel", null)
+                         .show();
+             }
+             return true;
+@@ -1342,7 +1357,7 @@
+         ClipboardManager cm =
+                 (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+         if (cm == null || t.isEmpty()) {
+-            android.widget.Toast.makeText(this, "Log kosong",
++            android.widget.Toast.makeText(this, "Log is empty",
+                     android.widget.Toast.LENGTH_SHORT).show();
+             return;
+         }
+@@ -1350,7 +1365,7 @@
+         int lines = 1;
+         for (int i = 0; i < t.length(); i++) if (t.charAt(i) == '\n') lines++;
+         android.widget.Toast.makeText(this,
+-                "Log tersalin (" + lines + " baris)",
++                "Log copied (" + lines + " lines)",
+                 android.widget.Toast.LENGTH_SHORT).show();
+     }
+ 
+@@ -1372,7 +1387,7 @@
+ 
+     private void shellWrite(String s) {
+         if (session == null || !shellReady) {
+-            appendOutput("[Shell belum siap]\n");
++            appendOutput("[Shell not ready]\n");
+             scheduleRender();
+             return;
+         }
+@@ -1409,7 +1424,7 @@
+     private void sendToShell(String text) {
+         if (text == null || text.length() == 0) return;
+         if (session == null || !shellReady) {
+-            appendOutput("[Shell belum siap]\n");
++            appendOutput("[Shell not ready]\n");
+             scheduleRender();
+             return;
+         }
+@@ -1515,7 +1530,7 @@
+         ClipboardManager cm =
+                 (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+         if (cm == null || !cm.hasPrimaryClip()) {
+-            appendOutput("[clipboard kosong]\n");
++            appendOutput("[clipboard is empty]\n");
+             scheduleRender();
+             return;
+         }
+@@ -2280,9 +2295,86 @@
+     // START UBUNTU
+     // ============================================================
+ 
++    /**
++     * Konfigurasi shell. /etc/paynux.sh (di dalam rootfs) SELALU ditimpa
++     * agar pembaruan app sampai ke instalasi lama; ~/.bashrc milik user
++     * hanya disisipi satu baris pemanggil. Dipanggil SEBELUM shell
++     * dijalankan, sehingga prompt benar sejak sesi pertama.
++     */
++    private static final String PAYNUX_SH =
++            "# Paynux shell config - managed by the app, overwritten on every session start.\n"
++                + "# Customize in ~/.bashrc; PAYNUX_PLAIN_PROMPT=1 disables this prompt.\n"
++                + "case $- in *i*) ;; *) return 0 2>/dev/null ;; esac\n"
++                + "export LANG=C.UTF-8\n"
++                + "if [ -t 1 ] && [ \"${TERM:-dumb}\" != \"dumb\" ] && [ -z \"${NO_COLOR:-}\" ]; then\n"
++                + "  eval \"$(dircolors -b 2>/dev/null)\"\n"
++                + "  alias ls='ls --color=auto'\n"
++                + "  alias grep='grep --color=auto'\n"
++                + "  alias ll='ls -alF'\n"
++                + "  if [ -z \"${PAYNUX_PLAIN_PROMPT:-}\" ]; then\n"
++                + "    __paynux_ps1() {\n"
++                + "      local rc=$?\n"
++                + "      local mark='\\[\\e[1;38;5;255m\\]'\n"
++                + "      [ \"$rc\" -ne 0 ] && mark='\\[\\e[1;38;5;196m\\]'\n"
++                + "      PS1='\\[\\e[1;38;5;33m\\]root\\[\\e[1;38;5;82m\\]@\\[\\e[1;38;5;196m\\]ubuntu\\[\\e[0m\\]:\\[\\e[1;38;5;75m\\]\\w\\[\\e[0m\\]'\"${mark}\"'#\\[\\e[0m\\] '\n"
++                + "    }\n"
++                + "    case \";${PROMPT_COMMAND:-};\" in\n"
++                + "      *\";__paynux_ps1;\"*) ;;\n"
++                + "      *) PROMPT_COMMAND=\"__paynux_ps1${PROMPT_COMMAND:+;$PROMPT_COMMAND}\" ;;\n"
++                + "    esac\n"
++                + "  fi\n"
++                + "else\n"
++                + "  PS1='root@ubuntu:\\w# '\n"
++                + "fi\n";
++
++    private static void writeText(File f, String text) throws Exception {
++        try (java.io.FileOutputStream o = new java.io.FileOutputStream(f, false)) {
++            o.write(text.getBytes(java.nio.charset.StandardCharsets.UTF_8));
++        }
++    }
++
++    private static String readText(File f) throws Exception {
++        try (java.io.FileInputStream in = new java.io.FileInputStream(f)) {
++            java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
++            byte[] b = new byte[4096];
++            int n;
++            while ((n = in.read(b)) != -1) bo.write(b, 0, n);
++            return new String(bo.toByteArray(), java.nio.charset.StandardCharsets.UTF_8);
++        }
++    }
++
++    private void writeShellConfig() {
++        try {
++            File etc = new File(ubuntuDir, "etc");
++            if (etc.isDirectory()) {
++                writeText(new File(etc, "paynux.sh"), PAYNUX_SH);
++            }
++            File home = new File(getFilesDir(), "home");
++            if (!home.exists()) home.mkdirs();
++
++            File bashrc = new File(home, ".bashrc");
++            String cur = bashrc.exists() ? readText(bashrc) : "";
++            if (!cur.contains("/etc/paynux.sh")) {
++                // buang PS1 polos bawaan versi lama
++                cur = cur.replace("export PS1='root@ubuntu:\\w# '\n", "");
++                if (cur.length() > 0 && !cur.endsWith("\n")) cur += "\n";
++                cur += "[ -f /etc/paynux.sh ] && . /etc/paynux.sh  # paynux\n";
++                writeText(bashrc, cur);
++            }
++            File bashProfile = new File(home, ".bash_profile");
++            if (!bashProfile.exists()) {
++                writeText(bashProfile, "[ -f ~/.bashrc ] && source ~/.bashrc\n");
++            }
++        } catch (Exception e) {
++            bootLog("[!] writeShellConfig: " + e + "\n");
++        }
++    }
++
+     private void startUbuntu(final Sess sc)
+             throws Exception {
+ 
++        writeShellConfig();
++
+         // --------------------------------------------------------
+         // ARGUMEN PROOT — identik dengan build yang terverifikasi
+         // (hanya transport I/O yang dipilih di blok START berikut)
+@@ -2447,15 +2539,15 @@
+             started = sc.ts.startPipe(pb);
+             if (!started) {
+                 throw new Exception(
+-                        "Shell tidak bisa dijalankan (PTY dan pipe sama-sama gagal)");
++                        "Shell could not be started (both PTY and pipe failed)");
+             }
+         }
+         sc.ready = true;
+         if (sc == active) shellReady = true;
+         if (sc.ts.isPtyMode()) {
+-            bootLog("[+] PTY aktif - shell interaktif siap.\n\n");
++            bootLog("[+] PTY active - interactive shell ready.\n\n");
+         } else {
+-            feedTo(sc.emu, "[!] Mode pipe (tanpa PTY) - interaksi terbatas.\n\n");
++            feedTo(sc.emu, "[!] Pipe mode (no PTY) - limited interaction.\n\n");
+         }
+         if (sc == active) scheduleRender();
+         runOnUiThread(() -> updateSessionButton());
+@@ -2465,23 +2557,8 @@
+         // bila belum ada, agar konfigurasi user tidak ditimpa)
+         // --------------------------------------------------------
+ 
+-        File bashrc = new File(getFilesDir(), "home/.bashrc");
+-        if (!bashrc.getParentFile().exists()) {
+-            bashrc.getParentFile().mkdirs();
+-        }
+-        if (!bashrc.exists()) {
+-            java.io.FileWriter fw = new java.io.FileWriter(bashrc, false);
+-            fw.write("export PS1='root@ubuntu:\\w# '\n");
+-            fw.write("export LANG=C.UTF-8\n");
+-            fw.close();
+-        }
+-
+-        File bashProfile = new File(getFilesDir(), "home/.bash_profile");
+-        if (!bashProfile.exists()) {
+-            java.io.FileWriter fp = new java.io.FileWriter(bashProfile, false);
+-            fp.write("[ -f ~/.bashrc ] && source ~/.bashrc\n");
+-            fp.close();
+-        }
++        // (.bashrc / .bash_profile kini ditulis oleh writeShellConfig()
++        //  SEBELUM shell dimulai.)
+ 
+         if (sc == active) showKeyboard();
+     }
+diff -ruN '--exclude=*.bak*' '--exclude=assets' '--exclude=jniLibs' '--exclude=*.txt' o2/app/src/main/java/com/paynux/terminal/TerminalSession.java n2/app/src/main/java/com/paynux/terminal/TerminalSession.java
+--- a/app/src/main/java/com/paynux/terminal/TerminalSession.java	2026-10-18 09:35:28.241183661 +0000
++++ b/app/src/main/java/com/paynux/terminal/TerminalSession.java	2026-10-18 09:40:37.324612027 +0000
+@@ -76,11 +76,11 @@
+                     null, rows, cols);
+         } catch (Throwable t) {
+             handle = -1;
+-            callback.onStatus("[!] PTY gagal (" + t + ") -> mode pipe");
++            callback.onStatus("[!] PTY failed (" + t + ") -> pipe mode");
+             return false;
+         }
+         if (handle < 0) {
+-            callback.onStatus("[!] PTY gagal (spawn<0) -> mode pipe");
++            callback.onStatus("[!] PTY failed (spawn<0) -> pipe mode");
+             return false;
+         }
+         ptyMode = true;
+@@ -102,7 +102,7 @@
+             readerThread.start();
+             return true;
+         } catch (Exception e) {
+-            callback.onStatus("[!] Gagal start proses: " + e);
++            callback.onStatus("[!] Failed to start process: " + e);
+             return false;
+         }
+     }
