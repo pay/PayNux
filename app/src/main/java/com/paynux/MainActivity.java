@@ -1115,11 +1115,18 @@ public class MainActivity extends Activity {
     // ukuran deque berhenti bertambah setelah MAX_SCROLLBACK, sehingga
     // pembandingan lama (total == rendered) membuat baris log baru tidak
     // pernah digambar lagi.
-    private long renderedScrollStart = 0;    // indeks global baris pertama di view
-    private int  renderedScrollCount = 0;    // jumlah baris riwayat di view
-    private long renderedScrollEnd    = -1;  // indeks global setelah baris terakhir
+    private long syncedTotal = -1;           // total emulator saat sync terakhir
+    private long syncedFirst = -1;           // indeks global pertama saat sync terakhir
+    private long viewFirst   = 0;            // indeks global baris pertama di view
+    private int  viewCount   = 0;            // jumlah baris riwayat di view
     private final java.util.List<TerminalEmulator.Line> scrollSnapshot =
             new java.util.ArrayList<>();
+
+    // View hanya menyimpan jendela riwayat terakhir: menyalin seluruh
+    // scrollback (4000 baris ~ 324k karakter) ke TextView tiap frame adalah
+    // sumber utama jank/berat. Riwayat penuh tetap di emulator untuk "Salin log".
+    private static final int MAX_VIEW_HISTORY_LINES = 600;
+    private static final int VIEW_HISTORY_SLACK = 200;
 
     private final Runnable renderRunnable = () -> {
         renderPending = false;
@@ -1295,9 +1302,13 @@ public class MainActivity extends Activity {
     }
 
     /**
-     * Sinkronkan scrollback berbasis indeks global (tahan MAX_SCROLLBACK).
-     * Indeks global = jumlah baris yang pernah masuk scrollback; baris yang
-     * dibuang dari depan menaikkan firstIdx, bukan membuat ukuran berhenti.
+     * Sinkronkan riwayat ke view.
+     *
+     * Indeks global = jumlah baris yang pernah masuk scrollback (monotonik).
+     * View hanya menyimpan jendela terakhir (MAX_VIEW_HISTORY_LINES + slack)
+     * karena menyalin seluruh scrollback (~324k karakter untuk 4000 baris) ke
+     * TextView pada tiap frame adalah penyebab utama jank. Riwayat penuh tetap
+     * tersedia di emulator untuk "Salin log".
      */
     private void syncScrollback() {
         if (emulator == null || scrollbackView == null) return;
@@ -1307,43 +1318,39 @@ public class MainActivity extends Activity {
         long total = emulator.getScrollbackTotal();
         int size = scrollSnapshot.size();
         long firstIdx = total - size;
-        if (total == renderedScrollEnd && firstIdx == renderedScrollStart) return;
+        if (total == syncedTotal && firstIdx == syncedFirst) return;
 
-        long drop = Math.max(0, firstIdx - renderedScrollStart);
-        int keep = renderedScrollCount - (int) drop;
+        long viewEnd = viewFirst + viewCount;
+        long newLines = total - viewEnd;
+        boolean rebuild = viewCount == 0
+                || viewFirst < firstIdx        // baris di view sudah dibuang emulator
+                || viewEnd != syncedTotal      // view tidak berakhir tepat di data lama
+                || viewCount + newLines > MAX_VIEW_HISTORY_LINES + VIEW_HISTORY_SLACK;
 
-        if (keep < 0 || keep > size) {
-            // View tidak sinkron (clear/reset sesi): bangun ulang dari awal.
-            keep = 0;
-            scrollbackView.setText("", TextView.BufferType.SPANNABLE);
-        } else if (drop > 0) {
-            dropFrontLines(scrollbackView, (int) drop);
+        if (rebuild) {
+            int keep = (int) Math.min(size, MAX_VIEW_HISTORY_LINES);
+            SpannableStringBuilder all = new SpannableStringBuilder();
+            for (int i = size - keep; i < size; i++) {
+                all.append(styleLine(scrollSnapshot.get(i), -1));
+                all.append('\n');
+            }
+            scrollbackView.setText(all, TextView.BufferType.SPANNABLE);
+            viewFirst = total - keep;
+            viewCount = keep;
+        } else if (newLines > 0) {
+            SpannableStringBuilder add = new SpannableStringBuilder();
+            for (long g = viewEnd; g < total; g++) {
+                int idx = (int) (g - firstIdx);
+                if (idx < 0 || idx >= size) continue;
+                add.append(styleLine(scrollSnapshot.get(idx), -1));
+                add.append('\n');
+            }
+            if (add.length() > 0) scrollbackView.append(add);
+            viewCount += (int) newLines;
         }
 
-        SpannableStringBuilder add = new SpannableStringBuilder();
-        for (int i = keep; i < size; i++) {
-            add.append(styleLine(scrollSnapshot.get(i), -1));
-            add.append('\n');
-        }
-        if (add.length() > 0) scrollbackView.append(add);
-
-        renderedScrollStart = firstIdx;
-        renderedScrollCount = size;
-        renderedScrollEnd = total;
-    }
-
-    /** Buang n baris pertama dari TextView (riwayat lama dibuang emulator). */
-    private void dropFrontLines(TextView v, int n) {
-        CharSequence cs = v.getText();
-        if (n <= 0 || !(cs instanceof SpannableStringBuilder)) return;
-        SpannableStringBuilder sb = (SpannableStringBuilder) cs;
-        int cut = 0;
-        for (int i = 0; i < n && cut < sb.length(); i++) {
-            int nl = android.text.TextUtils.indexOf(sb, '\n', cut);
-            if (nl < 0) { cut = sb.length(); break; }
-            cut = nl + 1;
-        }
-        sb.delete(0, cut);
+        syncedTotal = total;
+        syncedFirst = firstIdx;
     }
 
     /** Hitung rows/cols dari ukuran layar & font; resize bila berubah. */
@@ -1451,9 +1458,10 @@ public class MainActivity extends Activity {
         // bersihkan TOTAL tampilan sesi sebelumnya (teks + seleksi +
         // kursor) sebelum menggambar sesi ini
         cursorOffset = -1;
-        renderedScrollStart = 0;
-        renderedScrollCount = 0;
-        renderedScrollEnd = -1;
+        syncedTotal = -1;
+        syncedFirst = -1;
+        viewFirst = 0;
+        viewCount = 0;
         scrollSnapshot.clear();
         if (scrollbackView != null) {
             scrollbackView.setTextIsSelectable(true);
@@ -1755,8 +1763,11 @@ public class MainActivity extends Activity {
     private String getTranscript() {
         if (emulator == null) return "";
         StringBuilder out = new StringBuilder();
-        int sb = emulator.getScrollbackSize();
-        for (int i = 0; i < sb; i++) appendLine(out, emulator.getScrollbackLine(i));
+        // snapshot sekali (O(n)); getScrollbackLine(i) per indeks bersifat O(n)
+        // sehingga loop lama menjadi O(n^2) — 32,7 ms untuk 4000 baris.
+        java.util.List<TerminalEmulator.Line> lines = new java.util.ArrayList<>();
+        emulator.snapshotScrollback(lines);
+        for (int i = 0; i < lines.size(); i++) appendLine(out, lines.get(i));
         int rows = emulator.getRows();
         for (int r = 0; r < rows; r++) appendLine(out, emulator.getScreenLine(r));
         int end = out.length();
@@ -1861,7 +1872,13 @@ public class MainActivity extends Activity {
 
     /** Tombol COPY / fallback: salin SELURUH transcript. */
     private void copyAllLog() {
-        copyText(getTranscript(), "full");
+        // Transcript bisa >4000 baris: menyusunnya di UI thread memakan
+        // 58-76 ms (frame drop / ANR saat log 9router sedang ramai). Susun di
+        // thread latar, lalu pasang clipboard di UI thread.
+        new Thread(() -> {
+            final String t = getTranscript();
+            runOnUiThread(() -> copyText(t, "full"));
+        }, "paynux-copy").start();
     }
 
     /**
