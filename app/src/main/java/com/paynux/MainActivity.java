@@ -747,32 +747,13 @@ public class MainActivity extends Activity {
         keyBar.addView(topLine, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 1));
 
-        // --- baris 1: ESC / - HOME UP END PGUP ---
-        LinearLayout rowA = newToolbarRow();
-        addToolbarKey(rowA, "ESC",  "\u001b",      () -> shellWriteControl(3)); // ^C
-        addToolbarKey(rowA, "/",    "/",           () -> shellWrite("\\"));
-        addToolbarKey(rowA, "-",    "-",           () -> shellWrite("|"));
-        addToolbarKey(rowA, "HOME", "\u001b[H",    null);
-        addToolbarKey(rowA, "\u2191", "\u001b[A",  null);   // UP
-        addToolbarKey(rowA, "END",  "\u001b[F",    null);
-        // Kolom terakhir baris 1: tombol sesi (ganti PGUP).
-        // Swipe ke atas = PGUP supaya fungsi page-up tetap ada.
-        addToolbarKey(rowA, "SESS", "",            () -> shellWrite("\u001b[5~"));
-        keyBar.addView(rowA, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(KEY_H_DP)));
-
-        // --- baris 2: TAB CTRL ALT LEFT DOWN RIGHT KEYBOARD ---
-        LinearLayout rowB = newToolbarRow();
-        addToolbarKey(rowB, "TAB",  "\t",          () -> shellWriteControl(4)); // ^D
-        addToolbarKey(rowB, "CTRL", "",            null);
-        addToolbarKey(rowB, "ALT",  "",            null);
-        addToolbarKey(rowB, "\u2190", "\u001b[D",  null);   // LEFT
-        addToolbarKey(rowB, "\u2193", "\u001b[B",  null);   // DOWN
-        addToolbarKey(rowB, "\u2192", "\u001b[C",  null);   // RIGHT
-        addToolbarKey(rowB, "\u2328", "",          () -> shellWrite("\u001b[6~")); // PGDN
-        keyBar.addView(rowB, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(KEY_H_DP)));
-
+        // --- isi toolbar dari konfigurasi (default 2x7 seperti sebelumnya) ---
+        for (java.util.List<String> tokens : loadToolbarRows()) {
+            LinearLayout row = newToolbarRow();
+            for (String t : tokens) addToolbarToken(row, t);
+            keyBar.addView(row, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, dp(KEY_H_DP)));
+        }
 
         // --------------------------------------------------------
         // ASSEMBLE
@@ -930,6 +911,118 @@ public class MainActivity extends Activity {
      * Ketuk  -> jalur lama (makeKey: klik / auto-repeat / CTRL-ALT lengket).
      * Geser ke atas > SWIPE_UP_DP -> aksi kedua (bila disediakan).
      */
+    /** File konfigurasi toolbar di dalam Ubuntu (~/.paynux-keys). */
+    private File toolbarConfigFile() {
+        return new File(new File(getFilesDir(), "home"), ".paynux-keys");
+    }
+
+    /**
+     * Baris tombol toolbar. Dibaca dari ~/.paynux-keys (format ala Termux):
+     *   extra-keys = [[ESC,/,-,HOME,UP,END,SESS],[TAB,CTRL,ALT,LEFT,DOWN,RIGHT,KEYBOARD]]
+     * Bila file tidak ada / tidak valid -> default 2x7.
+     */
+    private java.util.List<java.util.List<String>> loadToolbarRows() {
+        java.util.List<java.util.List<String>> def = new java.util.ArrayList<>();
+        def.add(java.util.Arrays.asList("ESC", "/", "-", "HOME", "UP", "END", "SESS"));
+        def.add(java.util.Arrays.asList("TAB", "CTRL", "ALT", "LEFT", "DOWN", "RIGHT", "KEYBOARD"));
+        File f = toolbarConfigFile();
+        try {
+            if (!f.isFile()) { writeDefaultToolbarConfig(f); return def; }
+            String txt = readText(f);
+            for (String line : txt.split("\n")) {
+                String l = line.trim();
+                if (!l.startsWith("extra-keys")) continue;
+                int eq = l.indexOf('=');
+                if (eq < 0) continue;
+                java.util.List<java.util.List<String>> rows = parseToolbarRows(l.substring(eq + 1));
+                if (rows != null && !rows.isEmpty()) return rows;
+            }
+        } catch (Throwable ignored) { }
+        return def;
+    }
+
+    private void writeDefaultToolbarConfig(File f) {
+        try {
+            f.getParentFile().mkdirs();
+            writeText(f, "# Toolbar PayNux - format sama seperti extra-keys Termux.\n"
+                    + "# Ubah, lalu tutup-buka app. Hapus file ini untuk kembali ke default.\n"
+                    + "# Tombol: ESC TAB CTRL ALT HOME END PGUP PGDN UP DOWN LEFT RIGHT\n"
+                    + "#         SESS (panel sesi) KEYBOARD (\u2328) SPACE ENTER BACKSPACE\n"
+                    + "# Tombol lain = dikirim apa adanya (maks 3 huruf ditampilkan).\n"
+                    + "extra-keys = [[ESC,/,-,HOME,UP,END,SESS],[TAB,CTRL,ALT,LEFT,DOWN,RIGHT,KEYBOARD]]\n");
+        } catch (Throwable ignored) { }
+    }
+
+    /** Parse "[[A,B],[C,D]]" -> [[A,B],[C,D]]; null bila tidak ada baris. */
+    static java.util.List<java.util.List<String>> parseToolbarRows(String v) {
+        java.util.List<java.util.List<String>> rows = new java.util.ArrayList<>();
+        java.util.List<String> row = null;
+        StringBuilder cur = new StringBuilder();
+        int depth = 0;
+        for (int i = 0; i < v.length(); i++) {
+            char c = v.charAt(i);
+            if (c == '[') {
+                depth++;
+                if (depth == 2) row = new java.util.ArrayList<>();
+                continue;
+            }
+            if (c == ']') {
+                if (depth == 2 && row != null) {
+                    String t = cur.toString().trim();
+                    if (!t.isEmpty()) row.add(t);
+                    cur.setLength(0);
+                    if (!row.isEmpty()) rows.add(row);
+                    row = null;
+                }
+                depth--;
+                continue;
+            }
+            if (depth == 2 && row != null) {
+                if (c == ',') {
+                    String t = cur.toString().trim();
+                    if (!t.isEmpty()) row.add(t);
+                    cur.setLength(0);
+                } else {
+                    cur.append(c);
+                }
+            }
+        }
+        return rows.isEmpty() ? null : rows;
+    }
+
+    /** Tambahkan satu token konfigurasi sebagai tombol toolbar. */
+    private void addToolbarToken(LinearLayout row, String token) {
+        String t = token.trim();
+        if (t.isEmpty()) return;
+        String up = t.toUpperCase();
+        switch (up) {
+            case "ESC":   addToolbarKey(row, "ESC", "\u001b", () -> shellWriteControl(3)); return;
+            case "TAB":   addToolbarKey(row, "TAB", "\t", () -> shellWriteControl(4)); return;
+            case "/":     addToolbarKey(row, "/", "/", () -> shellWrite("\\")); return;
+            case "-":     addToolbarKey(row, "-", "-", () -> shellWrite("|")); return;
+            case "HOME":  addToolbarKey(row, "HOME", "\u001b[H", null); return;
+            case "END":   addToolbarKey(row, "END", "\u001b[F", null); return;
+            case "PGUP":  addToolbarKey(row, "PGUP", "\u001b[5~", null); return;
+            case "PGDN":  addToolbarKey(row, "PGDN", "\u001b[6~", null); return;
+            case "UP":    addToolbarKey(row, "\u2191", "\u001b[A", null); return;
+            case "DOWN":  addToolbarKey(row, "\u2193", "\u001b[B", null); return;
+            case "LEFT":  addToolbarKey(row, "\u2190", "\u001b[D", null); return;
+            case "RIGHT": addToolbarKey(row, "\u2192", "\u001b[C", null); return;
+            case "CTRL":  addToolbarKey(row, "CTRL", "", null); return;
+            case "ALT":   addToolbarKey(row, "ALT", "", null); return;
+            case "SPACE": addToolbarKey(row, "SPC", " ", null); return;
+            case "ENTER": addToolbarKey(row, "ENTER", "\r", null); return;
+            case "BACKSPACE": case "BS": addToolbarKey(row, "DEL", "\u007f", null); return;
+            case "SESS": case "SESSION":
+                addToolbarKey(row, "SESS", "", () -> shellWrite("\u001b[5~")); return;
+            case "KEYBOARD": case "KBD":
+                addToolbarKey(row, "\u2328", "", () -> shellWrite("\u001b[6~")); return;
+            default:
+                String label = t.length() > 3 ? t.substring(0, 3) : t;
+                addToolbarKey(row, label, t, null);
+        }
+    }
+
     private void addToolbarKey(LinearLayout row, String label, String seq,
                                final Runnable second) {
         Button btn = makeKey(label, seq);
