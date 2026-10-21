@@ -551,8 +551,20 @@ public class MainActivity extends Activity {
 
     /** Key event dari window: bila fokus di terminal TextView (bukan
      *  kolom input), teruskan ke shell agar ketikan tetap sampai. */
+    private boolean volUpHeld = false;   // Volume-Up ditahan = modifier (ala Termux)
+
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
+        // Volume-Up dipakai sebagai modifier: VolUp+E=Esc, VolUp+H/J/K/L=panah,
+        // VolUp+1..0=F1..F10 (sama seperti 'volume-keys = volume-up' di Termux).
+        if (event.getKeyCode() == KeyEvent.KEYCODE_VOLUME_UP) {
+            volUpHeld = event.getAction() == KeyEvent.ACTION_DOWN;
+            return super.dispatchKeyEvent(event);   // volume tetap berfungsi
+        }
+        if (volUpHeld && event.getAction() == KeyEvent.ACTION_DOWN && shellReady) {
+            String seq = volumeKeySequence(event.getKeyCode());
+            if (seq != null) { shellWrite(seq); return true; }
+        }
         if (shellReady && event.getAction() == KeyEvent.ACTION_DOWN) {
             View f = getCurrentFocus();
             boolean onTextView = (f instanceof TextView && f != hiddenInput);
@@ -2131,6 +2143,29 @@ public class MainActivity extends Activity {
      * Key event perangkat keras (dan beberapa IME) diteruskan apa
      * adanya ke shell: Enter -> \r, Del -> 0x7f, panah -> CSI.
      */
+    /** Kombinasi Volume-Up + tombol -> urutan escape (null = bukan kombinasi). */
+    static String volumeKeySequence(int keyCode) {
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_E: return "\u001b";           // Esc
+            case KeyEvent.KEYCODE_T: return "\t";               // Tab
+            case KeyEvent.KEYCODE_H: case KeyEvent.KEYCODE_A: return "\u001b[D";  // kiri
+            case KeyEvent.KEYCODE_J: case KeyEvent.KEYCODE_S: return "\u001b[B";  // bawah
+            case KeyEvent.KEYCODE_K: case KeyEvent.KEYCODE_W: return "\u001b[A";  // atas
+            case KeyEvent.KEYCODE_L: case KeyEvent.KEYCODE_D: return "\u001b[C";  // kanan
+            case KeyEvent.KEYCODE_1: return "\u001bOP";
+            case KeyEvent.KEYCODE_2: return "\u001bOQ";
+            case KeyEvent.KEYCODE_3: return "\u001bOR";
+            case KeyEvent.KEYCODE_4: return "\u001bOS";
+            case KeyEvent.KEYCODE_5: return "\u001b[15~";
+            case KeyEvent.KEYCODE_6: return "\u001b[17~";
+            case KeyEvent.KEYCODE_7: return "\u001b[18~";
+            case KeyEvent.KEYCODE_8: return "\u001b[19~";
+            case KeyEvent.KEYCODE_9: return "\u001b[20~";
+            case KeyEvent.KEYCODE_0: return "\u001b[21~";
+            default: return null;
+        }
+    }
+
     private boolean handleHardwareKey(int keyCode, KeyEvent event) {
         if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
         switch (keyCode) {
