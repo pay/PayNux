@@ -188,6 +188,17 @@ public final class TerminalEmulator {
         return null;
     }
     public Line getScreenLine(int r) { return (r >= 0 && r < rows) ? screen[r] : null; }
+
+    /**
+     * Buang riwayat tertua sampai tersisa `keep` baris. Dipakai saat sistem
+     * menekan memori (onTrimMemory/onLowMemory) supaya proses tidak dibunuh
+     * LMK. scrollTotal tidak diubah: nomor global tetap monotonik dan UI
+     * membangun ulang jendelanya.
+     */
+    public synchronized void trimScrollback(int keep) {
+        if (keep < 0) keep = 0;
+        while (scrollback.size() > keep) scrollback.removeFirst();
+    }
     public int getCursorRow() { return curRow; }
     public int getCursorCol() { return curCol; }
     public boolean isCursorVisible() { return cursorVisible; }
