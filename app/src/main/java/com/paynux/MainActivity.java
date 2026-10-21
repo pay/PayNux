@@ -1895,6 +1895,7 @@ public class MainActivity extends Activity {
 
     // id menu seleksi milik aplikasi (harus != id sistem)
     private static final int MENU_ID_PASTE = 0x7f0a0001;
+    private static final int MENU_ID_OPEN_URL = 0x7f0a0002;
 
     private static boolean exitLogPruned = false;
 
@@ -1929,6 +1930,37 @@ public class MainActivity extends Activity {
         } catch (Throwable ignored) { }
     }
 
+    /** Teks yang sedang dipilih di TextView (null bila tidak ada). */
+    private static String selectedText(TextView v) {
+        int s = v.getSelectionStart(), e = v.getSelectionEnd();
+        if (s < 0 || e <= s || e > v.getText().length()) return null;
+        return v.getText().subSequence(s, e).toString().trim();
+    }
+
+    /** Kenali URL; "example.com" dilengkapi https://. Null bila bukan URL. */
+    static String asUrl(String s) {
+        if (s == null) return null;
+        s = s.trim();
+        int sp = s.indexOf(' ');
+        if (sp > 0) s = s.substring(0, sp);
+        while (s.endsWith(")") || s.endsWith(",") || s.endsWith(".") || s.endsWith(";"))
+            s = s.substring(0, s.length() - 1);
+        if (s.isEmpty()) return null;
+        if (s.matches("(?i)^(https?|ftp)://[^\\s]+$")) return s;
+        if (s.matches("(?i)^[\\w.-]+\\.[a-z]{2,}(/[^\\s]*)?$")) return "https://" + s;
+        return null;
+    }
+
+    private void openUrl(String url) {
+        try {
+            startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW,
+                    android.net.Uri.parse(url)));
+        } catch (Throwable t) {
+            appendOutput("[!] Tidak ada aplikasi untuk membuka tautan.\n");
+            scheduleRender();
+        }
+    }
+
     private void installCopyAllSelectionAction(TextView view) {
         view.setCustomSelectionActionModeCallback(
                 new android.view.ActionMode.Callback() {
@@ -1940,6 +1972,10 @@ public class MainActivity extends Activity {
                 // Android tidak pernah muncul — tambahkan sendiri
                 // supaya bisa menempel clipboard ke shell.
                 menu.add(android.view.Menu.NONE, MENU_ID_PASTE, 100, "Tempel");
+                // Termux: tautan bisa langsung dibuka dari menu seleksi.
+                if (asUrl(selectedText(view)) != null) {
+                    menu.add(android.view.Menu.NONE, MENU_ID_OPEN_URL, 99, "Buka tautan");
+                }
                 return true;
             }
 
@@ -1965,6 +2001,12 @@ public class MainActivity extends Activity {
                 if (item.getItemId() == MENU_ID_PASTE) {
                     // tempel ke shell, bukan ke TextView (read-only)
                     pasteFromClipboard();
+                    mode.finish();
+                    return true;
+                }
+                if (item.getItemId() == MENU_ID_OPEN_URL) {
+                    String url = asUrl(selectedText(view));
+                    if (url != null) openUrl(url);
                     mode.finish();
                     return true;
                 }
