@@ -1169,7 +1169,11 @@ public class MainActivity extends Activity {
 
     private Button ctrlKeyBtn;
     private Button altKeyBtn;
-    private int renderedScrollback = 0;
+    private long renderedScrollStart = 0;   // nomor global baris pertama yang tampil
+    private long renderedScrollEnd = 0;     // nomor global akhir (monotonik)
+    private int renderedScrollCount = 0;    // jumlah baris yang tampil
+    private final java.util.ArrayList<TerminalEmulator.Line> scrollSnapshot =
+            new java.util.ArrayList<>();
 
     private final Runnable renderRunnable = () -> {
         renderPending = false;
@@ -1344,29 +1348,60 @@ public class MainActivity extends Activity {
         return b;
     }
 
-    /** Sinkronkan scrollback: append bila bertambah, rebuild bila berkurang. */
+    /**
+     * Sinkronkan scrollback. Ambil snapshot dalam satu lock (thread PTY terus
+     * menambah baris -> iterasi langsung memicu ConcurrentModificationException).
+     * Baris yang sudah dibuang cukup dipotong dari depan view; rebuild penuh
+     * hanya kalau keadaan view tidak lagi sinkron.
+     */
     private void syncScrollback() {
         if (emulator == null || scrollbackView == null) return;
         if (actionModeActive && scrollbackView.hasSelection()) return;
-        int total = emulator.getScrollbackSize();
-        if (total == renderedScrollback) return;
-        if (total < renderedScrollback) {
+
+        long firstIdx = emulator.snapshotScrollback(scrollSnapshot);
+        int total = scrollSnapshot.size();
+        long endIdx = firstIdx + total;
+        if (endIdx == renderedScrollEnd) return;   // tidak ada baris baru
+
+        int drop = (int) Math.max(0, firstIdx - renderedScrollStart);
+        int keep = renderedScrollCount - drop;
+        boolean trimmed = false;
+        if (drop > 0 && keep >= 0) {
+            CharSequence cs = scrollbackView.getText();
+            if (cs instanceof android.text.SpannableStringBuilder) {
+                android.text.SpannableStringBuilder sb =
+                        (android.text.SpannableStringBuilder) cs;
+                int cut = 0;
+                for (int i = 0; i < drop && cut < sb.length(); i++) {
+                    int nl = android.text.TextUtils.indexOf(sb, '\n', cut);
+                    if (nl < 0) { cut = sb.length(); break; }
+                    cut = nl + 1;
+                }
+                sb.delete(0, cut);
+                trimmed = true;
+            }
+        }
+
+        if (!trimmed && drop > 0) keep = -1;          // tidak bisa dipotong -> rebuild
+        if (keep < 0 || keep > total) {
             SpannableStringBuilder all = new SpannableStringBuilder();
             for (int i = 0; i < total; i++) {
-                all.append(styleLine(emulator.getScrollbackLine(i), -1));
+                all.append(styleLine(scrollSnapshot.get(i), -1));
                 all.append('\n');
             }
             scrollbackView.setText(all, TextView.BufferType.SPANNABLE);
-            renderedScrollback = total;
         } else {
             SpannableStringBuilder add = new SpannableStringBuilder();
-            for (int i = renderedScrollback; i < total; i++) {
-                add.append(styleLine(emulator.getScrollbackLine(i), -1));
+            for (int i = keep; i < total; i++) {
+                add.append(styleLine(scrollSnapshot.get(i), -1));
                 add.append('\n');
             }
-            scrollbackView.append(add);
-            renderedScrollback = total;
+            if (add.length() > 0) scrollbackView.append(add);
         }
+
+        renderedScrollStart = firstIdx;
+        renderedScrollCount = total;
+        renderedScrollEnd = endIdx;
     }
 
     /** Hitung rows/cols dari ukuran layar & font; resize bila berubah. */
@@ -1474,7 +1509,9 @@ public class MainActivity extends Activity {
         // bersihkan TOTAL tampilan sesi sebelumnya (teks + seleksi +
         // kursor) sebelum menggambar sesi ini
         cursorOffset = -1;
-        renderedScrollback = 0;
+        renderedScrollStart = 0;
+        renderedScrollEnd = 0;
+        renderedScrollCount = 0;
         if (scrollbackView != null) {
             scrollbackView.setTextIsSelectable(true);
             scrollbackView.setText("");
@@ -2935,7 +2972,35 @@ public class MainActivity extends Activity {
                 + "  fi\n"
                 + "else\n"
                 + "  PS1='root@ubuntu:\\w# '\n"
-                + "fi\n";
+                + "fi\n"
+                + "\n"
+                + "# portcheck [port]       - siapa yang memakai port (aman, tidak menghentikan apa pun)\n"
+                + "# killport  <port> --force - hentikan HANYA proses pendengar di port itu\n"
+                + "portbusy() { (exec 3<>\"/dev/tcp/127.0.0.1/${1:-20128}\") 2>/dev/null; }\n"
+                + "portcheck() {\n"
+                + "  local p=${1:-20128}\n"
+                + "  if portbusy \"$p\"; then\n"
+                + "    echo \"[!] port $p sudah dipakai - jangan start instance kedua\"\n"
+                + "    command -v ss >/dev/null 2>&1 && ss -ltnp 2>/dev/null | grep \":$p \"\n"
+                + "    ps -eo pid,cmd 2>/dev/null | grep -E \"bin/9router$\" | grep -v grep | head -3\n"
+                + "    echo \"    -> pakai yang sudah jalan (mis. buka http://localhost:$p)\"\n"
+                + "    echo \"    -> atau jalankan instance baru di port lain\"\n"
+                + "    echo \"    -> paksa hentikan: killport $p --force\"\n"
+                + "  else\n"
+                + "    echo \"[+] port $p bebas\"\n"
+                + "  fi\n"
+                + "}\n"
+                + "killport() {\n"
+                + "  local p=${1:-20128}\n"
+                + "  if [ \"${2:-}\" != \"--force\" ]; then\n"
+                + "    echo \"[!] killport $p butuh --force\"\n"
+                + "    echo \"    (port ini bisa dipakai layanan lain, mis. proxy model - mematikannya bisa merusak sesi lain)\"\n"
+                + "    return 1\n"
+                + "  fi\n"
+                + "  command -v fuser >/dev/null 2>&1 && fuser -k -n tcp \"$p\" 2>/dev/null || echo \"[!] fuser tidak ada (apt install psmisc)\"\n"
+                + "  sleep 1\n"
+                + "  if portbusy \"$p\"; then echo \"[!] port $p masih dipakai\"; else echo \"[+] port $p dibebaskan\"; fi\n"
+                + "}\n";
 
     private static void writeText(File f, String text) throws Exception {
         try (java.io.FileOutputStream o = new java.io.FileOutputStream(f, false)) {
