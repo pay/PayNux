@@ -73,8 +73,15 @@ public class MainActivity extends Activity {
     private static volatile Sess active;
     private static int nextSessId = 1;
     private static volatile MainActivity current;   // Activity yang sedang tampil (atau null)
-    private Button sessBtn;
-    private Button kbdFab; // tombol melayang: buka keyboard
+    private Button sessBtn;          // key sesi di toolbar (buka daftar sesi)
+    private TextView sessBadgeView;  // badge jumlah sesi pada key sesi
+    private float swipeDownY;        // awal gestur untuk aksi kedua (geser naik)
+    private boolean swipeFired;      // true = gestur geser naik sudah memicu aksi kedua
+    private int maxDecorHeightPx = -1; // cadangan deteksi IME (API < 30)
+
+    // ---- geometri toolbar (cukup ubah di sini) ----
+    static final int KEY_H_DP    = 32;   // tinggi satu baris toolbar
+    static final int SWIPE_UP_DP = 24;   // geser ke atas > ini = aksi kedua
 
     // emulator/session = penunjuk ke sesi AKTIF (dipakai kode lama)
     private static TerminalEmulator emulator;
@@ -160,6 +167,23 @@ public class MainActivity extends Activity {
         startFocusGuard();
         startCursorBlink();
 
+
+        // Izin storage ditanyakan SETELAH terminal siap, dan boot Ubuntu
+        // baru jalan setelah user menjawab -> urutan di log sama dengan
+        // yang terjadi di layar (tidak ada bind /sdcard yang gagal diam-diam).
+        requestStoragePermission();
+    }
+
+    private static volatile boolean ubuntuBootStarted = false;
+
+    /**
+     * Boot Ubuntu (rootfs + bind /sdcard). Dijalankan setelah izin
+     * storage dijawab supaya keputusan bind /sdcard sesuai kondisi
+     * izin yang benar-benar berlaku.
+     */
+    private void startUbuntuBoot() {
+        if (ubuntuBootStarted) return;
+        ubuntuBootStarted = true;
         new Thread(
                 () -> {
                     try {
@@ -352,38 +376,93 @@ public class MainActivity extends Activity {
         return t.length() <= w ? t : t.substring(0, Math.max(0, w));
     }
 
+    // ============================================================
+    // IZIN STORAGE (untuk bind /sdcard ke dalam Ubuntu)
+    // ============================================================
+
+    private static final int REQ_STORAGE = 1001;
+
+    /**
+     * Minta izin storage. Dipanggil setelah terminal siap: pesan ditulis
+     * ke log lebih dulu, baru dialog sistem muncul, dan boot Ubuntu
+     * baru jalan setelah user menjawab -- jadi yang tertulis di log
+     * sama persis dengan urutan yang dilihat user.
+     * targetSdk 28 -> izin runtime WRITE_EXTERNAL_STORAGE cukup untuk /sdcard.
+     */
+    private void requestStoragePermission() {
+        if (android.os.Build.VERSION.SDK_INT < 23) { startUbuntuBoot(); return; }
+        try {
+            if (checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                    == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                startUbuntuBoot();
+                return;
+            }
+            appendOutput("\n\u001b[1;36m[?] Meminta izin akses /sdcard "
+                    + "(Files and media)...\u001b[0m\n");
+            requestPermissions(new String[]{
+                    android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                    android.Manifest.permission.READ_EXTERNAL_STORAGE}, REQ_STORAGE);
+        } catch (Throwable t) {
+            bootLog("[!] storage permission: " + t + "\n");
+            startUbuntuBoot();
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int req, String[] perms, int[] res) {
+        super.onRequestPermissionsResult(req, perms, res);
+        if (req != REQ_STORAGE) return;
+        boolean ok = res.length > 0
+                && res[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
+        if (ok) {
+            appendOutput("\n\u001b[1;32m[+] Izin /sdcard: OK.\u001b[0m\n");
+        } else {
+            appendOutput("\n\u001b[1;33m[!] Izin penyimpanan ditolak \u2014 /sdcard tidak bisa dibuka.\n"
+                    + "    Aktifkan: Settings > Apps > Paynux > Permissions > Files and media,\n"
+                    + "    lalu buka sesi baru (tombol sesi > + New session).\u001b[0m\n");
+        }
+        startUbuntuBoot();
+    }
+
     /** Banner simpel: logo PAYNUX gradasi + satu baris info. */
     private void showBanner() {
         int cols = approxCols();
         String ver = appVersion();
 
-        if (cols < 24) { // layar sangat sempit: tanpa logo
-            appendOutput("\u001b[1;38;5;45mPAYNUX\u001b[0m \u001b[90mv" + ver + "\u001b[0m\n\n");
+        if (cols < 26) { // layar sangat sempit: tanpa logo
+            appendOutput("\u001b[1;38;5;45mPAYNUX \u001b[90mv" + ver + "\n\n");
             return;
         }
 
-        String[][] art = {
-            {"\u250C\u2500\u2510", "\u251C\u2500\u2518", "\u2534  "},                     // P
-            {"\u250C\u2500\u2510", "\u251C\u2500\u2524", "\u2534 \u2534"},               // A
-            {"\u252C \u252C", "\u2514\u252C\u2518", " \u2534 "},                           // Y
-            {"\u250C\u2510\u250C", "\u2502\u2502\u2502", "\u2518\u2514\u2518"},         // N
-            {"\u252C \u252C", "\u2502 \u2502", "\u2514\u2500\u2518"},                     // U
-            {"\u2500\u2510 \u252C", "\u250C\u2534\u252C\u2518", "\u2534 \u2514\u2500"} // X
+        // Logo blok gaya "pagga": 23 kolom, 3 baris. Karakter U+2591 (light
+        // shade) jadi pengisi gelap supaya hurufnya menonjol; sisa karakter
+        // diberi gradasi cyan -> biru per kolom.
+        String[] art = {
+            "\u2588\u2580\u2588\u2591\u2588\u2580\u2588\u2591\u2588\u2591\u2588\u2591\u2588\u2580\u2588\u2591\u2588\u2591\u2588\u2591\u2588\u2591\u2588",
+            "\u2588\u2580\u2580\u2591\u2588\u2580\u2588\u2591\u2591\u2588\u2591\u2591\u2588\u2591\u2588\u2591\u2588\u2591\u2588\u2591\u2584\u2580\u2584",
+            "\u2580\u2591\u2591\u2591\u2580\u2591\u2580\u2591\u2591\u2580\u2591\u2591\u2580\u2591\u2580\u2591\u2580\u2580\u2580\u2591\u2580\u2591\u2580"
         };
         int[] shade = {51, 45, 39, 33, 99, 135}; // cyan -> biru -> ungu
 
         appendOutput("\n");
-        for (int row = 0; row < 3; row++) {
+        for (int row = 0; row < art.length; row++) {
+            String line = art[row];
             StringBuilder sb = new StringBuilder("  ");
-            for (int l = 0; l < art.length; l++) {
-                sb.append("\u001b[1;38;5;").append(shade[l]).append('m')
-                  .append(art[l][row]);
+            for (int i = 0; i < line.length(); i++) {
+                char ch = line.charAt(i);
+                if (ch == '\u2591') {
+                    sb.append("\u001b[38;5;238m").append(ch);
+                } else {
+                    int sh = shade[Math.min(shade.length - 1,
+                            i * shade.length / Math.max(1, line.length()))];
+                    sb.append("\u001b[1;38;5;").append(sh).append('m').append(ch);
+                }
             }
             sb.append("\u001b[0m\n");
             appendOutput(sb.toString());
         }
         // pemisah gradasi selebar logo
-        int sepLen = Math.min(22, Math.max(8, cols - 4));
+        int sepLen = Math.min(23, Math.max(8, cols - 4));
         StringBuilder sep = new StringBuilder("  ");
         for (int i = 0; i < sepLen; i++) {
             int sh = shade[Math.min(shade.length - 1, i * shade.length / sepLen)];
@@ -398,7 +477,7 @@ public class MainActivity extends Activity {
         appendOutput("  " + dot + "\u001b[97mAndroid "
                 + android.os.Build.VERSION.RELEASE + "\u001b[0m"
                 + " \u001b[90m\u00B7 v" + ver + "\u001b[0m\n");
-        appendOutput("  \u001b[38;5;240mcubit = zoom \u00B7 hold a session = close\u001b[0m\n\n");
+        appendOutput("  \u001b[38;5;240mpinch = zoom \u00B7 hold a session = close\u001b[0m\n\n");
     }
 
     private volatile boolean actionModeActive = false;
@@ -614,9 +693,9 @@ public class MainActivity extends Activity {
                 handleHardwareKey(keyCode, event));
 
         // --------------------------------------------------------
-        // EXTRA KEYS BAR — SATU baris kompak ala Termux
-        // (otomatis sembunyi saat keyboard tertutup — lihat
-        //  listener insets setelah setContentView)
+        // EXTRA KEYS BAR — dua baris ala Termux: 7 kolom, lebar rata,
+        // tanpa scroll horizontal. SELALU terlihat (spesifikasi).
+        // Ketuk = aksi biasa; geser ke atas > SWIPE_UP_DP = aksi kedua.
         // --------------------------------------------------------
 
         keyBar = new LinearLayout(this);
@@ -629,51 +708,32 @@ public class MainActivity extends Activity {
         keyBar.addView(topLine, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 1));
 
-        // satu baris yang bisa digeser ke samping: tombol cukup
-        // besar untuk jari, tidak lagi dijepit 11 tombol sekaligus
-        android.widget.HorizontalScrollView keyScroll =
-                new android.widget.HorizontalScrollView(this);
-        keyScroll.setHorizontalScrollBarEnabled(false);
-        keyScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        // --- baris 1: ESC / - HOME UP END PGUP ---
+        LinearLayout rowA = newToolbarRow();
+        addToolbarKey(rowA, "ESC",  "\u001b",      () -> shellWriteControl(3)); // ^C
+        addToolbarKey(rowA, "/",    "/",           () -> shellWrite("\\"));
+        addToolbarKey(rowA, "-",    "-",           () -> shellWrite("|"));
+        addToolbarKey(rowA, "HOME", "\u001b[H",    null);
+        addToolbarKey(rowA, "\u2191", "\u001b[A",  null);   // UP
+        addToolbarKey(rowA, "END",  "\u001b[F",    null);
+        // Kolom terakhir baris 1: tombol sesi (ganti PGUP).
+        // Swipe ke atas = PGUP supaya fungsi page-up tetap ada.
+        addToolbarKey(rowA, "SESS", "",            () -> shellWrite("\u001b[5~"));
+        keyBar.addView(rowA, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(KEY_H_DP)));
 
-        LinearLayout keyRow = new LinearLayout(this);
-        keyRow.setOrientation(LinearLayout.HORIZONTAL);
-        keyScroll.addView(keyRow, new android.widget.HorizontalScrollView.LayoutParams(
-                android.widget.HorizontalScrollView.LayoutParams.WRAP_CONTENT,
-                android.widget.HorizontalScrollView.LayoutParams.WRAP_CONTENT));
+        // --- baris 2: TAB CTRL ALT LEFT DOWN RIGHT KEYBOARD ---
+        LinearLayout rowB = newToolbarRow();
+        addToolbarKey(rowB, "TAB",  "\t",          () -> shellWriteControl(4)); // ^D
+        addToolbarKey(rowB, "CTRL", "",            null);
+        addToolbarKey(rowB, "ALT",  "",            null);
+        addToolbarKey(rowB, "\u2190", "\u001b[D",  null);   // LEFT
+        addToolbarKey(rowB, "\u2193", "\u001b[B",  null);   // DOWN
+        addToolbarKey(rowB, "\u2192", "\u001b[C",  null);   // RIGHT
+        addToolbarKey(rowB, "\u2328", "",          () -> shellWrite("\u001b[6~")); // PGDN
+        keyBar.addView(rowB, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(KEY_H_DP)));
 
-        String[][] row1 = {
-            {"ESC",  "\u001b"},
-            {"TAB",  "\t"},
-            {"CTRL", ""},
-            {"ALT",  ""},
-            {"SESS", ""},
-            {"NEW",  ""},
-            {"\u2190", "\u001b[D"},
-            {"\u2191", "\u001b[A"},
-            {"\u2193", "\u001b[B"},
-            {"\u2192", "\u001b[C"},
-            {"COPY", ""},
-            {"PASTE", ""},
-            {"HOME", "\u001b[H"},
-            {"END",  "\u001b[F"},
-            {"PGUP", "\u001b[5~"},
-            {"PGDN", "\u001b[6~"},
-            {"-",    "-"},
-            {"/",    "/"},
-            {"|",    "|"},
-            {"~",    "~"},
-            {"^C",    ""},
-            {"^D",    ""},
-        };
-
-        for (String[] k : row1) {
-            keyRow.addView(makeKey(k[0], k[1]),
-                    new LinearLayout.LayoutParams(dp(k[0].length() > 2 ? 48 : 38), dp(34)));
-        }
-        keyBar.addView(keyScroll, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
 
         // --------------------------------------------------------
         // ASSEMBLE
@@ -695,29 +755,6 @@ public class MainActivity extends Activity {
                 android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
                 android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
 
-        kbdFab = new Button(this);
-        kbdFab.setText("\u2328");
-        kbdFab.setTextSize(15);
-        kbdFab.setTextColor(CYAN_COLOR);
-        kbdFab.setAllCaps(false);
-        kbdFab.setIncludeFontPadding(false);
-        kbdFab.setPadding(0, 0, 0, 0);
-        kbdFab.setMinHeight(0);
-        kbdFab.setMinWidth(0);
-        kbdFab.setFocusable(false);
-        kbdFab.setStateListAnimator(null);
-        android.graphics.drawable.GradientDrawable fabBg =
-                new android.graphics.drawable.GradientDrawable();
-        fabBg.setShape(android.graphics.drawable.GradientDrawable.OVAL);
-        fabBg.setColor(Color.argb(150, 40, 40, 40));
-        fabBg.setStroke(dp(1), CYAN_COLOR);
-        kbdFab.setBackground(fabBg);
-        kbdFab.setOnClickListener(v -> showKeyboard());
-        android.widget.FrameLayout.LayoutParams fabLp =
-                new android.widget.FrameLayout.LayoutParams(dp(34), dp(34),
-                        Gravity.BOTTOM | Gravity.END);
-        fabLp.setMargins(0, 0, dp(10), dp(10));
-        frame.addView(kbdFab, fabLp);
 
         setContentView(frame);
 
@@ -752,16 +789,14 @@ public class MainActivity extends Activity {
                     }
                 });
 
-        // Seperti Termux: baris input + extra-keys hanya tampil
-        // saat keyboard terbuka; keyboard tertutup = terminal
-        // memakai seluruh layar.
+        // Toolbar extra-keys SELALU terlihat (spesifikasi v0.3.8-ui):
+        // hanya kolom input IME yang mengikuti buka/tutup keyboard.
         frame.setOnApplyWindowInsetsListener((v, insets) -> {
             boolean kbd = insets.getSystemWindowInsetBottom() > 100;
-            int vis = kbd ? View.VISIBLE : View.GONE;
-            if (hiddenInput != null) hiddenInput.setVisibility(vis);
-            if (keyBar != null) keyBar.setVisibility(vis);
-            // keyboard tertutup -> tombol ⌨ tampil; terbuka -> hilang
-            if (kbdFab != null) kbdFab.setVisibility(kbd ? View.GONE : View.VISIBLE);
+            if (hiddenInput != null) {
+                hiddenInput.setVisibility(kbd ? View.VISIBLE : View.GONE);
+            }
+            if (keyBar != null) keyBar.setVisibility(View.VISIBLE);
             return insets;
         });
 
@@ -841,6 +876,125 @@ public class MainActivity extends Activity {
         return label.equals("\u2190") || label.equals("\u2191")
                 || label.equals("\u2193") || label.equals("\u2192")
                 || label.equals("PGUP") || label.equals("PGDN");
+    }
+
+    /** Satu baris toolbar: 7 kolom, lebar sama, tinggi KEY_H_DP. */
+    private LinearLayout newToolbarRow() {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setBaselineAligned(false);
+        return row;
+    }
+
+    /**
+     * Tambah satu tombol ke baris toolbar.
+     * Ketuk  -> jalur lama (makeKey: klik / auto-repeat / CTRL-ALT lengket).
+     * Geser ke atas > SWIPE_UP_DP -> aksi kedua (bila disediakan).
+     */
+    private void addToolbarKey(LinearLayout row, String label, String seq,
+                               final Runnable second) {
+        Button btn = makeKey(label, seq);
+        View cell = (second == null) ? btn : wrapSwipeKey(btn, second);
+        if (label.equals("SESS") && cell instanceof android.view.ViewGroup) {
+            buildSessionIcon((android.view.ViewGroup) cell, btn);
+        }
+        row.addView(cell, new LinearLayout.LayoutParams(0, dp(KEY_H_DP), 1f));
+    }
+
+    /**
+     * Pembungkus gestur untuk aksi kedua. Event diteruskan apa adanya ke
+     * tombol asli (tidak mengubah makeKey), kecuali bila jari digeser naik
+     * lebih dari SWIPE_UP_DP: tombol dibatalkan, aksi kedua dijalankan.
+     */
+    /**
+     * Sel tombol yang mendukung aksi kedua: geser ke atas > SWIPE_UP_DP.
+     * Deteksi harus lewat onInterceptTouchEvent (ViewGroup tidak punya
+     * setOnTouchListener yangdipanggil sebelum anak consume touch), jadi
+     * sel ini merebut gestur -> tombol dapat ACTION_CANCEL -> aksi kedua
+     * dijalankan pada ACTION_UP.
+     */
+    private class SwipeCell extends android.widget.FrameLayout {
+        private final Runnable second;
+
+        SwipeCell(View child, Runnable second) {
+            super(MainActivity.this);
+            this.second = second;
+            addView(child, new android.widget.FrameLayout.LayoutParams(
+                    android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                    android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
+        }
+
+        @Override public boolean onInterceptTouchEvent(
+                android.view.MotionEvent ev) {
+            switch (ev.getActionMasked()) {
+                case android.view.MotionEvent.ACTION_DOWN:
+                    swipeDownY = ev.getY();
+                    swipeFired = false;
+                    break;
+                case android.view.MotionEvent.ACTION_MOVE:
+                    if (!swipeFired && swipeDownY - ev.getY() > dp(SWIPE_UP_DP)) {
+                        swipeFired = true;
+                        requestDisallowInterceptTouchEvent(true);
+                        return true;   // rebut gestur -> anak dibatalkan
+                    }
+                    break;
+                case android.view.MotionEvent.ACTION_CANCEL:
+                    swipeFired = false;
+                    break;
+                default:
+                    break;
+            }
+            return false;
+        }
+
+        @Override public boolean onTouchEvent(android.view.MotionEvent ev) {
+            if (!swipeFired) return false;
+            if (ev.getActionMasked() == android.view.MotionEvent.ACTION_UP) {
+                swipeFired = false;
+                if (second != null) second.run();
+            }
+            return true;
+        }
+    }
+
+    private View wrapSwipeKey(final View child, final Runnable second) {
+        return new SwipeCell(child, second);
+    }
+
+
+
+    /**
+     * Ikon sesi pada key toolbar: tiga garis + badge jumlah sesi.
+     * Ditambahkan sebagai child View biasa ke sel (ViewGroup) — bukan
+     * onDraw kustom — supaya tergambar selama tombolnya tergambar.
+     */
+    private void buildSessionIcon(android.view.ViewGroup cell, Button btn) {
+        btn.setText("");
+
+        int barW = dp(13), barH = Math.max(2, dp(2)), gap = dp(3);
+        for (int i = 0; i < 3; i++) {
+            View bar = new View(this);
+            bar.setBackgroundColor(CYAN_COLOR);
+            android.widget.FrameLayout.LayoutParams blp =
+                    new android.widget.FrameLayout.LayoutParams(barW, barH,
+                            Gravity.CENTER);
+            blp.topMargin = (i - 1) * (barH + gap);
+            cell.addView(bar, blp);
+        }
+
+        sessBadgeView = new TextView(this);
+        sessBadgeView.setText(String.valueOf(sessions.size()));
+        sessBadgeView.setTextSize(6);
+        sessBadgeView.setTextColor(Color.rgb(16, 16, 16));
+        sessBadgeView.setGravity(Gravity.CENTER);
+        sessBadgeView.setIncludeFontPadding(false);
+        android.graphics.drawable.GradientDrawable bg =
+                new android.graphics.drawable.GradientDrawable();
+        bg.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+        bg.setColor(CYAN_COLOR);
+        sessBadgeView.setBackground(bg);
+        cell.addView(sessBadgeView, new android.widget.FrameLayout.LayoutParams(
+                dp(11), dp(11), Gravity.END | Gravity.BOTTOM));
     }
 
     private Button makeKey(String label, String seq) {
@@ -931,6 +1085,9 @@ public class MainActivity extends Activity {
                 case "PASTE":
                     pasteFromClipboard();
                     break;
+                case "\u2328":           // KEYBOARD: toggle keyboard virtual
+                    toggleKeyboard();
+                    break;
                 case "NEW":
                     newSession();
                     break;
@@ -962,9 +1119,34 @@ public class MainActivity extends Activity {
 
     private static void appendOutput(String text) {
         if (emulator == null || text == null) return;
+        text = colorizeStatusLines(text);
         // status boot memakai \n telanjang; terminal butuh \r\n agar
         // kolom kembali ke 0 (semantik ONLCR yang dijalankan tty asli)
         emulator.feed(text.replace("\r\n", "\n").replace("\n", "\r\n"));
+    }
+
+    /**
+     * Warnai baris status aplikasi: [*] cyan, [+] hijau, [!] kuning.
+     * Baris yang sudah mengandung escape (mis. pesan izin) dibiarkan.
+     * Diterapkan di satu tempat supaya baris baru otomatis ikut berwarna.
+     */
+    private static String colorizeStatusLines(String text) {
+        if (text.indexOf('[') < 0) return text;
+        String[] lines = text.split("\n", -1);
+        boolean changed = false;
+        for (int i = 0; i < lines.length; i++) {
+            String l = lines[i];
+            if (l.indexOf('\u001b') >= 0) continue;
+            String col = null;
+            if (l.startsWith("[*] ")) col = "\u001b[1;36m";
+            else if (l.startsWith("[+] ")) col = "\u001b[1;32m";
+            else if (l.startsWith("[!] ")) col = "\u001b[1;33m";
+            if (col != null) {
+                lines[i] = col + l + "\u001b[0m";
+                changed = true;
+            }
+        }
+        return changed ? String.join("\n", lines) : text;
     }
 
     // ============================================================
@@ -1060,8 +1242,6 @@ public class MainActivity extends Activity {
             all.append(scrollbackView.getText());
         }
 
-        int historyLength = all.length();
-
         int rows = emulator.getRows();
         boolean curVis = emulator.isCursorVisible();
         int curRow = emulator.getCursorRow();
@@ -1085,8 +1265,10 @@ public class MainActivity extends Activity {
             }
         }
 
-        cursorOffset = activeCursorOffset < 0
-                ? -1 : historyLength + activeCursorOffset;
+        // lineStart di dalam 'all' sudah ABSOLUT (scrollback + layar),
+        // jadi historyLength tidak boleh ditambah lagi -- kalau ditambah,
+        // span kursor tertempat jauh di luar teks dan tidak terlihat.
+        cursorOffset = activeCursorOffset;
 
         screenView.setText(all, TextView.BufferType.SPANNABLE);
         applyCursorSpan();
@@ -1319,9 +1501,10 @@ public class MainActivity extends Activity {
     }
 
     private void updateSessionButton() {
-        if (sessBtn == null) return;
-        int idx = sessions.indexOf(active);
-        sessBtn.setText("S" + (idx + 1) + "/" + sessions.size());
+        if (sessBadgeView != null) {
+            sessBadgeView.setText(String.valueOf(sessions.size()));
+        }
+        if (sessBtn != null) sessBtn.invalidate();
     }
 
     /** Tombol NEW: tambah sesi baru (sesi lama tetap hidup di latar). */
@@ -1419,45 +1602,163 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** Daftar semua sesi: ketuk = pindah, tekan lama = tutup. */
+    /**
+     * Panel daftar sesi ala Termux: header, daftar sesi (sesi aktif ditandai
+     * dengan latar+Warna cyan), pemisah antar baris, lalu baris aksi.
+     * Ketuk baris = pindah sesi, tahan baris = konfirmasi tutup.
+     * Fungsi yang dipakai (tanpa diubah): activate(), newSession(),
+     * copyAllLog(), pasteFromClipboard(), closeSession(), sessionPreview().
+     */
     private void showSessionList() {
         final List<Sess> snap = new ArrayList<>(sessions);
-        String[] items = new String[snap.size()];
-        for (int i = 0; i < snap.size(); i++) {
-            Sess sc = snap.get(i);
+        final int n = snap.size();
+        final android.app.AlertDialog[] holder = new android.app.AlertDialog[1];
+
+        final int BG_PANEL = Color.rgb(18, 18, 18);
+        final int BG_ROW   = Color.rgb(24, 24, 24);
+        final int FG_DIM   = Color.rgb(140, 140, 140);
+
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setBackgroundColor(BG_PANEL);
+
+        // ---- header ----
+        TextView title = new TextView(this);
+        title.setText("Sessions");
+        title.setTextColor(CYAN_COLOR);
+        title.setTextSize(14);
+        title.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        title.setPadding(dp(16), dp(14), dp(16), dp(2));
+        panel.addView(title);
+
+        TextView hint = new TextView(this);
+        hint.setText(n + (n == 1 ? " session" : " sessions")
+                + "  \u00B7  tap to switch  \u00B7  hold to close");
+        hint.setTextColor(FG_DIM);
+        hint.setTextSize(9);
+        hint.setTypeface(Typeface.MONOSPACE);
+        hint.setPadding(dp(16), 0, dp(16), dp(10));
+        panel.addView(hint);
+
+        // ---- daftar sesi ----
+        if (n == 0) {
+            TextView empty = new TextView(this);
+            empty.setText("No sessions");
+            empty.setTextColor(FG_DIM);
+            empty.setTextSize(11);
+            empty.setTypeface(Typeface.MONOSPACE);
+            empty.setPadding(dp(16), dp(14), dp(16), dp(18));
+            panel.addView(empty);
+        }
+
+        for (int i = 0; i < n; i++) {
+            final Sess sc = snap.get(i);
+            final boolean act = (sc == active);
             String st = sc.exited ? "exited" : (sc.ready ? "running" : "starting");
             String pv = sessionPreview(sc);
-            items[i] = (sc == active ? "\u25B6 " : "   ")
-                    + "Session " + sc.id + " \u00B7 " + st
-                    + (pv.isEmpty() ? "" : "\n     " + pv);
-        }
-        android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(
-                this, android.R.style.Theme_Material_Dialog_Alert)
-                .setTitle("Terminal sessions (long-press = close)")
-                .setItems(items, (d, which) -> {
-                    if (which >= 0 && which < snap.size()
-                            && sessions.contains(snap.get(which))) {
-                        activate(snap.get(which));
-                    }
-                })
-                .setPositiveButton("+ New session", (d, w) -> newSession())
-                .setNegativeButton("Close", null)
-                .create();
-        dlg.show();
-        dlg.getListView().setOnItemLongClickListener((parent, v, pos, id) -> {
-            if (pos >= 0 && pos < snap.size()) {
-                final Sess target = snap.get(pos);
-                dlg.dismiss();
+
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.VERTICAL);
+            row.setPadding(dp(16), dp(9), dp(16), dp(9));
+
+            android.graphics.drawable.GradientDrawable rowBg =
+                    new android.graphics.drawable.GradientDrawable();
+            rowBg.setColor(act ? Color.rgb(26, 40, 44) : BG_ROW);
+            row.setBackground(rowBg);
+
+            TextView t1 = new TextView(this);
+            t1.setText((act ? "\u25B6 " : "  ") + "Session " + sc.id);
+            t1.setTextColor(act ? CYAN_COLOR : Color.WHITE);
+            t1.setTextSize(12);
+            t1.setTypeface(Typeface.MONOSPACE,
+                    act ? Typeface.BOLD : Typeface.NORMAL);
+            row.addView(t1);
+
+            TextView t2 = new TextView(this);
+            t2.setText(st + (pv.isEmpty() ? "" : "   " + pv));
+            t2.setTextColor(FG_DIM);
+            t2.setTextSize(9);
+            t2.setTypeface(Typeface.MONOSPACE);
+            t2.setSingleLine(true);
+            t2.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            row.addView(t2);
+
+            row.setOnClickListener(v -> {
+                if (holder[0] != null) holder[0].dismiss();
+                if (sessions.contains(sc)) activate(sc);
+            });
+            row.setOnLongClickListener(v -> {
+                if (holder[0] != null) holder[0].dismiss();
                 new android.app.AlertDialog.Builder(this,
                         android.R.style.Theme_Material_Dialog_Alert)
-                        .setMessage("Close session " + target.id + "?")
+                        .setMessage("Close session " + sc.id + "?")
                         .setPositiveButton("Close",
-                                (d2, w2) -> closeSession(target))
+                                (d2, w2) -> closeSession(sc))
                         .setNegativeButton("Cancel", null)
                         .show();
-            }
-            return true;
-        });
+                return true;
+            });
+            panel.addView(row);
+
+            View sep = new View(this);
+            sep.setBackgroundColor(Color.rgb(38, 38, 38));
+            panel.addView(sep, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, 1));
+        }
+
+        // ---- baris aksi ----
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        actions.setGravity(Gravity.CENTER_VERTICAL);
+        actions.setPadding(dp(8), dp(6), dp(8), dp(6));
+        actions.setBackgroundColor(BG_PANEL);
+        panel.addView(actions);
+
+        addSessionAction(actions, "+ New",
+                () -> { if (holder[0] != null) holder[0].dismiss(); newSession(); });
+        addSessionAction(actions, "Copy log",
+                () -> { if (holder[0] != null) holder[0].dismiss(); copyAllLog(); });
+        addSessionAction(actions, "Paste",
+                () -> { if (holder[0] != null) holder[0].dismiss(); pasteFromClipboard(); });
+        addSessionAction(actions, "Close",
+                () -> { if (holder[0] != null) holder[0].dismiss(); });
+
+        android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(
+                this, android.R.style.Theme_Material_Dialog_Alert)
+                .setView(panel)
+                .create();
+        holder[0] = dlg;
+        dlg.show();
+        if (dlg.getWindow() != null) {
+            dlg.getWindow().setBackgroundDrawable(
+                    new android.graphics.drawable.ColorDrawable(BG_PANEL));
+        }
+    }
+
+    /** Tombol aksi kecil di panel sesi (warna tetap cyan). */
+    private void addSessionAction(LinearLayout row, String label,
+                                  final Runnable action) {
+        android.widget.Button b = new android.widget.Button(this);
+        b.setText(label);
+        b.setTextSize(11);
+        b.setTextColor(CYAN_COLOR);
+        b.setAllCaps(false);
+        b.setIncludeFontPadding(false);
+        b.setMinHeight(0);
+        b.setMinWidth(0);
+        b.setPadding(dp(10), dp(6), dp(10), dp(6));
+        b.setTypeface(Typeface.MONOSPACE);
+        b.setFocusable(false);
+        android.graphics.drawable.StateListDrawable bg =
+                new android.graphics.drawable.StateListDrawable();
+        bg.addState(new int[]{android.R.attr.state_pressed},
+                new android.graphics.drawable.ColorDrawable(Color.rgb(40, 40, 40)));
+        bg.addState(new int[]{},
+                new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
+        b.setBackground(bg);
+        b.setStateListAnimator(null);
+        b.setOnClickListener(v -> action.run());
+        row.addView(b, new LinearLayout.LayoutParams(0, dp(36), 1f));
     }
 
     // ============================================================
@@ -1843,6 +2144,57 @@ public class MainActivity extends Activity {
                 }, 300);
             }
         });
+    }
+
+    /**
+     * Tombol ⌨ (KEYBOARD) ala Termux: ketuk = toggle keyboard virtual.
+     * Isi showKeyboard() tidak diubah — dipakai hanya sebagai jalur "tampilkan".
+     */
+    private void toggleKeyboard() {
+        runOnUiThread(() -> {
+            if (hiddenInput == null) return;
+            InputMethodManager imm = (InputMethodManager)
+                    getSystemService(Context.INPUT_METHOD_SERVICE);
+            if (imm == null) return;
+
+            if (isImeVisible()) {
+                imm.hideSoftInputFromWindow(hiddenInput.getWindowToken(), 0);
+                return;
+            }
+
+            // tampilkan: pastikan anchor IME hidup lalu minta fokus
+            if (hiddenInput.getVisibility() != View.VISIBLE) {
+                hiddenInput.setVisibility(View.VISIBLE);
+            }
+            hiddenInput.requestFocus();
+
+            // SHOW_FORCED: tetap dipakai walau deprecated (API 31+) karena
+            // keyboard hardware/Bluetooth membuat SHOW_IMPLICIT diabaikan.
+            boolean shown = imm.showSoftInput(hiddenInput,
+                    InputMethodManager.SHOW_FORCED);
+            if (!shown) {
+                // paksa IME tampil bila showSoftInput ditolak
+                imm.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0);
+            }
+        });
+    }
+
+    /**
+     * Keyboard virtual sedang tampil?
+     * API 30+: WindowInsets.Type.ime(); cadangan (API < 30): selisih
+     * tinggi layout — tinggi maksimum yang pernah terlihat = tanpa IME.
+     */
+    private boolean isImeVisible() {
+        android.view.View decor = getWindow().getDecorView();
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            android.view.WindowInsets wi = decor.getRootWindowInsets();
+            if (wi != null) {
+                return wi.isVisible(android.view.WindowInsets.Type.ime());
+            }
+        }
+        int h = decor.getHeight();
+        if (h > maxDecorHeightPx) maxDecorHeightPx = h;
+        return maxDecorHeightPx > 0 && h < maxDecorHeightPx - dp(100);
     }
 
     // ============================================================
@@ -2579,16 +2931,7 @@ public class MainActivity extends Activity {
                 + "  alias grep='grep --color=auto'\n"
                 + "  alias ll='ls -alF'\n"
                 + "  if [ -z \"${PAYNUX_PLAIN_PROMPT:-}\" ]; then\n"
-                + "    __paynux_ps1() {\n"
-                + "      local rc=$?\n"
-                + "      local mark='\\[\\e[1;38;5;255m\\]'\n"
-                + "      [ \"$rc\" -ne 0 ] && mark='\\[\\e[1;38;5;196m\\]'\n"
-                + "      PS1='\\[\\e[1;38;5;33m\\]root\\[\\e[1;38;5;82m\\]@\\[\\e[1;38;5;196m\\]ubuntu\\[\\e[0m\\]:\\[\\e[1;38;5;75m\\]\\w\\[\\e[0m\\]'\"${mark}\"'#\\[\\e[0m\\] '\n"
-                + "    }\n"
-                + "    case \";${PROMPT_COMMAND:-};\" in\n"
-                + "      *\";__paynux_ps1;\"*) ;;\n"
-                + "      *) PROMPT_COMMAND=\"__paynux_ps1${PROMPT_COMMAND:+;$PROMPT_COMMAND}\" ;;\n"
-                + "    esac\n"
+                + "    PS1='\\[\\e[1;32m\\]┌──(\\[\\e[1;36m\\]\\u\\[\\e[1;32m\\]@\\[\\e[1;31m\\]\\h\\[\\e[1;32m\\])-[\\[\\e[1;37m\\]\\w] \\[\\e[1;33m\\]\\t\\n\\[\\e[1;32m\\]╰╼ \\[\\e[0m\\]'\n"
                 + "  fi\n"
                 + "else\n"
                 + "  PS1='root@ubuntu:\\w# '\n"
@@ -2699,6 +3042,18 @@ public class MainActivity extends Activity {
                 homeDir.getAbsolutePath() +
                 ":/root"
         );
+
+        // BIND /sdcard -> penyimpanan bersama (butuh izin storage; targetSdk 28
+        // = legacy storage, jadi izin runtime WRITE_EXTERNAL_STORAGE cukup).
+        File shared = new File("/storage/emulated/0");
+        if (shared.isDirectory()) {
+            if (shared.canRead()) {
+                command.add("-b");
+                command.add(shared.getAbsolutePath() + ":/sdcard");
+            } else {
+                appendOutput("\u001b[1;33m[!] /sdcard tidak di-bind: izin penyimpanan belum aktif.\u001b[0m\n");
+            }
+        }
 
         command.add(
                 "--link2symlink"
