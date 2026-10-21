@@ -99,6 +99,27 @@ public class MainActivity extends Activity {
     private int fontSizeSp = 14;
     private boolean userAtBottom = true;
     private boolean altScreenShown = false;   // riwayat disembunyikan saat alt-screen
+    private static long lastBellAt = 0;       // throttle getaran BEL
+
+    /** BEL dari shell -> getar singkat (throttle 400 ms). */
+    private static void vibrateBell() {
+        MainActivity a = current;
+        if (a == null) return;
+        long now = android.os.SystemClock.uptimeMillis();
+        if (now - lastBellAt < 400) return;
+        lastBellAt = now;
+        try {
+            android.os.Vibrator v =
+                    (android.os.Vibrator) a.getSystemService(VIBRATOR_SERVICE);
+            if (v != null && v.hasVibrator()) {
+                if (android.os.Build.VERSION.SDK_INT >= 26) {
+                    v.vibrate(android.os.VibrationEffect.createOneShot(25, 140));
+                } else {
+                    v.vibrate(25);
+                }
+            }
+        } catch (Throwable ignored) { }
+    }
     private boolean renderPending = false;
     private int lastRows = -1, lastCols = -1;
 
@@ -1485,7 +1506,7 @@ public class MainActivity extends Activity {
         sc.emu = new TerminalEmulator(24, 80, new TerminalEmulator.Listener() {
             @Override public void onScreenChanged() { if (sc == active) uiRender(); }
             @Override public void onScrollbackChanged() { if (sc == active) uiRender(); }
-            @Override public void onBell() { }
+            @Override public void onBell() { vibrateBell(); }
             @Override public void onResponse(String data) {
                 if (sc.ts != null) sc.ts.write(data);
             }
@@ -1529,7 +1550,7 @@ public class MainActivity extends Activity {
             @Override public void onResponse(String data) {
                 if (sc.ts != null) sc.ts.write(data);
             }
-            @Override public void onBell() { }
+            @Override public void onBell() { vibrateBell(); }
         };
     }
 

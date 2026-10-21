@@ -4,6 +4,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
     <!-- Akses /sdcard dari dalam rootfs (app targetSdk 28 = legacy storage).
          JANGAN pakai maxSdkVersion: pada API 33 izin jadi tidak ada sama sekali
          dan /sdcard berakhir "Permission denied". -->
