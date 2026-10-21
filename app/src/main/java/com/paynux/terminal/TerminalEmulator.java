@@ -90,6 +90,8 @@ public final class TerminalEmulator {
 
     private Line[] screen;
     private final ArrayDeque<Line> scrollback = new ArrayDeque<>();
+    /** Jumlah baris yang PERNAH masuk scrollback (monotonik, tak pernah mundur). */
+    private long scrollTotal = 0;
     private Line[] altScreen;
     private boolean altActive = false;
 
@@ -136,13 +138,32 @@ public final class TerminalEmulator {
     public int getRows() { return rows; }
     public int getCols() { return cols; }
     public boolean isAltScreen() { return altActive; }
-    public int getScrollbackSize() { return scrollback.size(); }
-    public Line getScrollbackLine(int i) {
+    public synchronized int getScrollbackSize() { return scrollback.size(); }
+
+    /**
+     * Jumlah baris yang PERNAH masuk scrollback. Dipakai UI untuk tahu ada
+     * baris baru walau deque sudah penuh (MAX_SCROLLBACK) dan ukurannya
+     * tidak bertambah lagi — sumber bug "log berhenti tampil".
+     */
+    public synchronized long getScrollbackTotal() { return scrollTotal; }
+
+    /**
+     * Salin isi scrollback dalam SATU lock. Thread PTY menulis terus-menerus;
+     * iterasi langsung atas deque dari UI thread bisa melempar
+     * ConcurrentModificationException.
+     */
+    public synchronized void snapshotScrollback(java.util.List<Line> out) {
+        out.clear();
+        out.addAll(scrollback);
+    }
+
+    public synchronized Line getScrollbackLine(int i) {
         int idx = 0;
         for (Line l : scrollback) { if (idx++ == i) return l; }
         return null;
     }
-    public Line getScreenLine(int r) { return (r >= 0 && r < rows) ? screen[r] : null; }
+
+    public synchronized Line getScreenLine(int r) { return (r >= 0 && r < rows) ? screen[r] : null; }
     public int getCursorRow() { return curRow; }
     public int getCursorCol() { return curCol; }
     public boolean isCursorVisible() { return cursorVisible; }
@@ -444,6 +465,7 @@ public final class TerminalEmulator {
         int drop = Math.max(0, src.length - rows);
         for (int r = 0; r < drop; r++) {
             scrollback.addLast(src[r]);
+            scrollTotal++;
             if (scrollback.size() > MAX_SCROLLBACK) scrollback.removeFirst();
         }
         if (drop > 0) scrollDirty = true;
@@ -616,6 +638,7 @@ public final class TerminalEmulator {
             boolean full = (scrollTop == 0 && scrollBottom == rows - 1);
             if (full && !altActive) {
                 scrollback.addLast(screen[0]);
+                scrollTotal++;
                 if (scrollback.size() > MAX_SCROLLBACK) scrollback.removeFirst();
                 scrollDirty = true;
             }
@@ -746,6 +769,7 @@ public final class TerminalEmulator {
             for (int r = 0; r < drop; r++) {
                 if (!altActive) {
                     scrollback.addLast(screen[r]);
+                    scrollTotal++;
                     if (scrollback.size() > MAX_SCROLLBACK) scrollback.removeFirst();
                 }
             }

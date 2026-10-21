@@ -1111,7 +1111,15 @@ public class MainActivity extends Activity {
 
     private Button ctrlKeyBtn;
     private Button altKeyBtn;
-    private int renderedScrollback = 0;
+    // Sinkronisasi riwayat pakai indeks GLOBAL (monotonik), bukan ukuran deque:
+    // ukuran deque berhenti bertambah setelah MAX_SCROLLBACK, sehingga
+    // pembandingan lama (total == rendered) membuat baris log baru tidak
+    // pernah digambar lagi.
+    private long renderedScrollStart = 0;    // indeks global baris pertama di view
+    private int  renderedScrollCount = 0;    // jumlah baris riwayat di view
+    private long renderedScrollEnd    = -1;  // indeks global setelah baris terakhir
+    private final java.util.List<TerminalEmulator.Line> scrollSnapshot =
+            new java.util.ArrayList<>();
 
     private final Runnable renderRunnable = () -> {
         renderPending = false;
@@ -1286,29 +1294,56 @@ public class MainActivity extends Activity {
         return b;
     }
 
-    /** Sinkronkan scrollback: append bila bertambah, rebuild bila berkurang. */
+    /**
+     * Sinkronkan scrollback berbasis indeks global (tahan MAX_SCROLLBACK).
+     * Indeks global = jumlah baris yang pernah masuk scrollback; baris yang
+     * dibuang dari depan menaikkan firstIdx, bukan membuat ukuran berhenti.
+     */
     private void syncScrollback() {
         if (emulator == null || scrollbackView == null) return;
         if (actionModeActive && scrollbackView.hasSelection()) return;
-        int total = emulator.getScrollbackSize();
-        if (total == renderedScrollback) return;
-        if (total < renderedScrollback) {
-            SpannableStringBuilder all = new SpannableStringBuilder();
-            for (int i = 0; i < total; i++) {
-                all.append(styleLine(emulator.getScrollbackLine(i), -1));
-                all.append('\n');
-            }
-            scrollbackView.setText(all, TextView.BufferType.SPANNABLE);
-            renderedScrollback = total;
-        } else {
-            SpannableStringBuilder add = new SpannableStringBuilder();
-            for (int i = renderedScrollback; i < total; i++) {
-                add.append(styleLine(emulator.getScrollbackLine(i), -1));
-                add.append('\n');
-            }
-            scrollbackView.append(add);
-            renderedScrollback = total;
+
+        emulator.snapshotScrollback(scrollSnapshot);
+        long total = emulator.getScrollbackTotal();
+        int size = scrollSnapshot.size();
+        long firstIdx = total - size;
+        if (total == renderedScrollEnd && firstIdx == renderedScrollStart) return;
+
+        long drop = Math.max(0, firstIdx - renderedScrollStart);
+        int keep = renderedScrollCount - (int) drop;
+
+        if (keep < 0 || keep > size) {
+            // View tidak sinkron (clear/reset sesi): bangun ulang dari awal.
+            keep = 0;
+            scrollbackView.setText("", TextView.BufferType.SPANNABLE);
+        } else if (drop > 0) {
+            dropFrontLines(scrollbackView, (int) drop);
         }
+
+        SpannableStringBuilder add = new SpannableStringBuilder();
+        for (int i = keep; i < size; i++) {
+            add.append(styleLine(scrollSnapshot.get(i), -1));
+            add.append('\n');
+        }
+        if (add.length() > 0) scrollbackView.append(add);
+
+        renderedScrollStart = firstIdx;
+        renderedScrollCount = size;
+        renderedScrollEnd = total;
+    }
+
+    /** Buang n baris pertama dari TextView (riwayat lama dibuang emulator). */
+    private void dropFrontLines(TextView v, int n) {
+        CharSequence cs = v.getText();
+        if (n <= 0 || !(cs instanceof SpannableStringBuilder)) return;
+        SpannableStringBuilder sb = (SpannableStringBuilder) cs;
+        int cut = 0;
+        for (int i = 0; i < n && cut < sb.length(); i++) {
+            int nl = android.text.TextUtils.indexOf(sb, '\n', cut);
+            if (nl < 0) { cut = sb.length(); break; }
+            cut = nl + 1;
+        }
+        sb.delete(0, cut);
     }
 
     /** Hitung rows/cols dari ukuran layar & font; resize bila berubah. */
@@ -1416,7 +1451,10 @@ public class MainActivity extends Activity {
         // bersihkan TOTAL tampilan sesi sebelumnya (teks + seleksi +
         // kursor) sebelum menggambar sesi ini
         cursorOffset = -1;
-        renderedScrollback = 0;
+        renderedScrollStart = 0;
+        renderedScrollCount = 0;
+        renderedScrollEnd = -1;
+        scrollSnapshot.clear();
         if (scrollbackView != null) {
             scrollbackView.setTextIsSelectable(true);
             scrollbackView.setText("");
