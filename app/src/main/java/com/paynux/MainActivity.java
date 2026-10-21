@@ -839,6 +839,12 @@ public class MainActivity extends Activity {
                 scaleDetector.onTouchEvent(ev);
                 if (scaleDetector.isInProgress()) return true;
             }
+            // Aplikasi full-screen (htop, mc, ...) bisa meminta laporan mouse
+            // lewat ?1000/?1002/?1003 -> sentuhan diteruskan sebagai event mouse.
+            if (emulator != null && emulator.isMouseTracking()) {
+                handleMouseTouch(ev);
+                return true;
+            }
             switch (ev.getActionMasked()) {
                 case android.view.MotionEvent.ACTION_DOWN:
                     touchInProgress = true;
@@ -2346,6 +2352,62 @@ public class MainActivity extends Activity {
         if (scrollbackView != null) scrollbackView.setText("");
         if (screenView != null) screenView.setText("");
         scheduleRender();
+    }
+
+    private boolean mouseDown = false;
+
+    /** Terjemahkan sentuhan di terminal menjadi laporan mouse untuk shell. */
+    private void handleMouseTouch(android.view.MotionEvent ev) {
+        if (emulator == null) return;
+        boolean sgr = emulator.isMouseSgr();
+        switch (ev.getActionMasked()) {
+            case android.view.MotionEvent.ACTION_DOWN: {
+                int[] cell = touchToCell(ev.getX(), ev.getY());
+                if (cell == null) return;
+                mouseDown = true;
+                shellWrite(TerminalEmulator.mouseReport(sgr, 0, cell[0], cell[1], true));
+                break;
+            }
+            case android.view.MotionEvent.ACTION_MOVE: {
+                if (!mouseDown) return;
+                int[] cell = touchToCell(ev.getX(), ev.getY());
+                if (cell == null) return;
+                shellWrite(TerminalEmulator.mouseReport(sgr, 32, cell[0], cell[1], true));
+                break;
+            }
+            case android.view.MotionEvent.ACTION_UP: {
+                if (!mouseDown) return;
+                mouseDown = false;
+                int[] cell = touchToCell(ev.getX(), ev.getY());
+                if (cell == null) return;
+                shellWrite(TerminalEmulator.mouseReport(sgr, 0, cell[0], cell[1], false));
+                break;
+            }
+            case android.view.MotionEvent.ACTION_CANCEL:
+                mouseDown = false;
+                break;
+            default:
+                break;
+        }
+    }
+
+    /** Koordinat sentuhan -> indeks sel (kolom, baris) di layar terminal. */
+    private int[] touchToCell(float x, float y) {
+        if (screenView == null || terminalScroll == null || emulator == null) return null;
+        int[] viewLoc = new int[2];
+        screenView.getLocationOnScreen(viewLoc);
+        int[] scrollLoc = new int[2];
+        terminalScroll.getLocationOnScreen(scrollLoc);
+        float fx = x + scrollLoc[0] - viewLoc[0];
+        float fy = y + scrollLoc[1] - viewLoc[1];
+        float charW = screenView.getPaint().measureText("M");
+        int lineH = screenView.getLineHeight();
+        if (charW <= 0 || lineH <= 0) return null;
+        int col = (int) (fx / charW);
+        int row = (int) (fy / lineH);
+        col = Math.max(0, Math.min(emulator.getCols() - 1, col));
+        row = Math.max(0, Math.min(emulator.getRows() - 1, row));
+        return new int[]{col, row};
     }
 
     private void changeFontSize(int delta) {

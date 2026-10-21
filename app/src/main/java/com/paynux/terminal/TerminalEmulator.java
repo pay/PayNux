@@ -114,6 +114,10 @@ public final class TerminalEmulator {
     private final boolean[] paramColon = new boolean[32];
     private int nParams;
     private boolean privateMode;
+    private boolean mouseTrack = false;      // ?1000 tombol
+    private boolean mouseDrag = false;       // ?1002 tombol+drag
+    private boolean mouseAny = false;        // ?1003 semua gerakan
+    private boolean mouseSgr = false;        // ?1006 format SGR
     private int strKind; // for OSC/STR termination distinction
     private StringBuilder osc = new StringBuilder();
 
@@ -137,6 +141,29 @@ public final class TerminalEmulator {
     public int getRows() { return rows; }
     public int getCols() { return cols; }
     public boolean isAltScreen() { return altActive; }
+
+    /** Aplikasi meminta laporan mouse? (1000/1002/1003) */
+    public synchronized boolean isMouseTracking() {
+        return mouseTrack || mouseDrag || mouseAny;
+    }
+
+    /** Format laporan mouse SGR (1006) atau X10 biasa? */
+    public synchronized boolean isMouseSgr() { return mouseSgr; }
+
+    /**
+     * Laporan mouse ke aplikasi.
+     * @param button 0=kiri 1=tengah 2=kanan, +32 = gerakan (drag)
+     * @param press true = ditekan, false = dilepas
+     */
+    public static String mouseReport(boolean sgr, int button, int col, int row,
+                                     boolean press) {
+        if (sgr) {
+            return "\u001b[<" + button + ";" + (col + 1) + ";" + (row + 1)
+                    + (press ? "M" : "m");
+        }
+        int cb = press ? button : 3;            // X10: 3 = release
+        return "\u001b[M" + (char) (32 + cb) + (char) (32 + col) + (char) (32 + row);
+    }
     public synchronized int getScrollbackSize() { return scrollback.size(); }
 
     /** Nomor global baris terakhir + 1 (monotonik, tidak pernah mundur). */
@@ -421,6 +448,11 @@ public final class TerminalEmulator {
                 case 25: cursorVisible = on; break;
                 case 7: autowrap = on; break;
                 case 1049: case 1047: case 47: setAltScreen(on, m != 1047 && m != 47); break;
+                case 1000: mouseTrack = on; break;
+                case 1002: mouseDrag = on; break;
+                case 1003: mouseAny = on; break;
+                case 1006: mouseSgr = on; break;
+                case 1015: mouseSgr = on; break;   // urxvt (format SGR)
                 default: break; // ?2004 bracketed paste etc: accepted, no-op
             }
         }
