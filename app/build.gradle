@@ -10,8 +10,8 @@ android {
         applicationId 'com.paynux'
         minSdk 23
         targetSdk 28
-        versionCode 12
-        versionName '0.4.0'
+        versionCode 13
+        versionName '0.4.1'
     }
 
     packaging {

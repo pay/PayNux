@@ -3455,6 +3455,7 @@ public class MainActivity extends Activity {
                 + "# Customize in ~/.bashrc; PAYNUX_PLAIN_PROMPT=1 disables this prompt.\n"
                 + "case $- in *i*) ;; *) return 0 2>/dev/null ;; esac\n"
                 + "export LANG=C.UTF-8\n"
+                + "export PATH=\"/usr/local/bin:$PATH\"\n"
                 + "\n"
                 + "# command history: write it right away, do not wait for the shell to exit\n"
                 + "# (the session may be killed when the app closes -> normal history is lost)\n"
@@ -3470,7 +3471,7 @@ public class MainActivity extends Activity {
                 + "  alias grep='grep --color=auto'\n"
                 + "  alias ll='ls -alF'\n"
                 + "  if [ -z \"${PAYNUX_PLAIN_PROMPT:-}\" ]; then\n"
-                + "    PS1='\\[\\e[1;32m\\]┌──(\\[\\e[1;36m\\]\\u\\[\\e[1;32m\\]@\\[\\e[1;31m\\]\\h\\[\\e[1;32m\\])-[\\[\\e[1;37m\\]\\w] \\[\\e[1;33m\\]\\t\\n\\[\\e[1;32m\\]╰╼ \\[\\e[0m\\]'\n"
+                + "    PS1='\\[\\e[1;32m\\]┌──(\\[\\e[1;36m\\]\\u\\[\\e[1;32m\\]@\\[\\e[1;31m\\]paynux\\[\\e[1;32m\\])-[\\[\\e[1;37m\\]\\w] \\[\\e[1;33m\\]\\t\\n\\[\\e[1;32m\\]╰╼ \\[\\e[0m\\]'\n"
                 + "  fi\n"
                 + "else\n"
                 + "  PS1='root@ubuntu:\\w# '\n"
@@ -3520,8 +3521,50 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** Isi skrip 'uname' & 'hostname' di /usr/local/bin (override nama host). */
+    private static final String UNAME_SH =
+            "#!/bin/sh\n"
+            + "# Paynux: tampilkan nama host & sistem operasi ala distro Linux\n"
+            + "case \"$1\" in\n"
+            + "  -a|--all)\n"
+            + "    echo \"Linux paynux $(/bin/uname -r) #1 SMP PREEMPT "
+            + "Thu Jun 13 08:03:55 UTC 2024 $(/bin/uname -m) GNU/Linux\"\n"
+            + "    ;;\n"
+            + "  -n|--nodename) echo \"paynux\" ;;\n"
+            + "  -o|--operating-system) echo \"GNU/Linux\" ;;\n"
+            + "  *) exec /bin/uname \"$@\" ;;\n"
+            + "esac\n";
+
+    private static final String HOSTNAME_SH =
+            "#!/bin/sh\n"
+            + "case \"$1\" in\n"
+            + "  \"\") echo \"paynux\" ;;\n"
+            + "  *) exec /bin/hostname \"$@\" ;;\n"
+            + "esac\n";
+
+    /**
+     * PRoot tidak mengimplementasikan sethostname (ENOSYS), jadi nama host
+     * asli Android tidak bisa diubah di level kernel. Wrapper di
+     * /usr/local/bin (PATH mendahulukan /bin) yang menampilkan "paynux".
+     */
+    private void writeTerminalTools() {
+        try {
+            File bin = new File(ubuntuDir, "usr/local/bin");
+            if (!bin.isDirectory() && !bin.mkdirs()) return;
+            File uname = new File(bin, "uname");
+            writeText(uname, UNAME_SH);
+            uname.setExecutable(true, false);
+            File host = new File(bin, "hostname");
+            writeText(host, HOSTNAME_SH);
+            host.setExecutable(true, false);
+        } catch (Exception e) {
+            bootLog("[!] writeTerminalTools: " + e + "\n");
+        }
+    }
+
     private void writeShellConfig() {
         try {
+            writeTerminalTools();
             File etc = new File(ubuntuDir, "etc");
             if (etc.isDirectory()) {
                 writeText(new File(etc, "paynux.sh"), PAYNUX_SH);
@@ -3566,6 +3609,14 @@ public class MainActivity extends Activity {
 
         command.add(
                 "-0"
+        );
+
+        // Kernel release ala Ubuntu (PRoot memalsukan uname -r).
+        command.add(
+                "-k"
+        );
+        command.add(
+                "6.8.0-52-generic"
         );
 
         command.add(
