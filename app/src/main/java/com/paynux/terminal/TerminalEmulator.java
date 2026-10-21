@@ -93,6 +93,8 @@ public final class TerminalEmulator {
     private long scrollTotal = 0;   // jumlah baris yang pernah masuk scrollback
     private Line[] altScreen;
     private boolean altActive = false;
+    private int savedCurRow = -1;   // posisi kursor sebelum masuk alt screen (?1049)
+    private int savedCurCol = 0;
 
     private int rows, cols;
     private int curRow = 0, curCol = 0;
@@ -476,6 +478,11 @@ public final class TerminalEmulator {
     private void setAltScreen(boolean on, boolean savePrimary) {
         if (on == altActive) return;
         if (on) {
+            // ?1049 menyimpan posisi kursor layar primer; ?1047/?47 tidak.
+            if (savePrimary) {
+                savedCurRow = curRow;
+                savedCurCol = curCol;
+            }
             altScreen = screen;
             screen = new Line[rows];
             for (int i = 0; i < rows; i++) screen[i] = new Line(cols);
@@ -488,6 +495,13 @@ public final class TerminalEmulator {
             if (altScreen != null) screen = fitScreen(altScreen);
             altScreen = null;
             altActive = false;
+            // Kembalikan kursor ke posisi sebelum nano/vim. Tanpa ini shell
+            // mencetak prompt baru di baris terbawah layar (jarak kosong besar).
+            if (savedCurRow >= 0) {
+                curRow = savedCurRow;
+                curCol = savedCurCol;
+                savedCurRow = -1;
+            }
             clampCursor();
         }
         scrollBottom = rows - 1;
