@@ -517,6 +517,9 @@ public final class TerminalEmulator {
                             boolean colonStyle = paramColon[i + 1];
                             int base = i + 1;
                             int ro = colonStyle ? 2 : 1; // offset of r from params[base]
+                            // '38:2:r:g:b' (tanpa field colorspace) juga lazim dipakai;
+                            // kalau bentuk 3-field tidak cukup, coba geser satu.
+                            if (colonStyle && base + ro + 2 >= nParams && base + 1 + 2 < nParams) ro = 1;
                             if (base + ro + 2 < nParams || (base + ro + 2 == nParams - 1)) {
                                 if (base + ro + 2 < params.length) {
                                     int r = params[base + ro], g = params[base + ro + 1], b = params[base + ro + 2];
