@@ -368,13 +368,34 @@ public class MainActivity extends Activity {
         }
     }
 
+    private Typeface monoTypeface = null;
+
+    /**
+     * Font terminal: DejaVu Sans Mono (dibundel di assets/fonts/paynux-mono.ttf).
+     * Alasan: DroidSansMono tidak punya glyph kotak/blok (U+2500..U+2591) yang
+     * dipakai banner dan prompt, jadi Android memakai font fallback dengan
+     * metrik lebih tinggi -> celah kosong antar baris. DejaVu Sans Mono punya
+     * semua glyph itu dan tinggi barisnya sama (1,1641 em).
+     */
+    private Typeface monoTypeface() {
+        if (monoTypeface == null) {
+            try {
+                monoTypeface = Typeface.createFromAsset(getAssets(),
+                        "fonts/paynux-mono.ttf");
+            } catch (Exception e) {
+                monoTypeface = Typeface.MONOSPACE;
+            }
+        }
+        return monoTypeface;
+    }
+
     /** Perkiraan jumlah kolom sebelum layout selesai diukur. */
     private int approxCols() {
         if (lastCols > 0) return lastCols;
         try {
             android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
             android.graphics.Paint p = new android.graphics.Paint();
-            p.setTypeface(Typeface.MONOSPACE);
+            p.setTypeface(monoTypeface());
             p.setTextSize(fontSizeSp * dm.scaledDensity);
             float cw = p.measureText("M");
             if (cw > 0) return Math.max(20, (int) ((dm.widthPixels - 32) / cw));
@@ -639,7 +660,7 @@ public class MainActivity extends Activity {
         scrollbackView = new TextView(this);
         scrollbackView.setTextColor(FG);
         scrollbackView.setTextSize(fontSizeSp);
-        scrollbackView.setTypeface(Typeface.MONOSPACE);
+        scrollbackView.setTypeface(monoTypeface());
         scrollbackView.setGravity(Gravity.START);
         scrollbackView.setPadding(16, 8, 16, 0);
         scrollbackView.setTextIsSelectable(true); // SELECT: crash isolation test
@@ -658,7 +679,7 @@ public class MainActivity extends Activity {
         screenView = new TextView(this);
         screenView.setTextColor(FG);
         screenView.setTextSize(fontSizeSp);
-        screenView.setTypeface(Typeface.MONOSPACE);
+        screenView.setTypeface(monoTypeface());
         screenView.setGravity(Gravity.TOP | Gravity.START);
         screenView.setPadding(16, 0, 16, 4);
         screenView.setTextIsSelectable(true); // SELECT: crash isolation test
@@ -724,7 +745,7 @@ public class MainActivity extends Activity {
         hiddenInput.setHighlightColor(Color.TRANSPARENT);
         hiddenInput.setCursorVisible(false);
         hiddenInput.setSingleLine(true);
-        hiddenInput.setTypeface(Typeface.MONOSPACE);
+        hiddenInput.setTypeface(monoTypeface());
         hiddenInput.setTextSize(Math.min(fontSizeSp, 14));
         // strip input DISARMONIKAN: tinggi 1px transparan — keyboard
         // tetap mengetik lurus ke shell (ala Termux), layar terminal
