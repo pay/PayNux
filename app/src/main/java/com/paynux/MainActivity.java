@@ -444,7 +444,7 @@ public class MainActivity extends Activity {
                 startUbuntuBoot();
                 return;
             }
-            appendOutput("\n\u001b[1;36m[?] Meminta izin akses /sdcard "
+            appendOutput("\n\u001b[38;5;240m[?] Requesting /sdcard access "
                     + "(Files and media)...\u001b[0m\n");
             requestPermissions(new String[]{
                     android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
@@ -462,11 +462,11 @@ public class MainActivity extends Activity {
         boolean ok = res.length > 0
                 && res[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
         if (ok) {
-            appendOutput("\n\u001b[1;32m[+] Izin /sdcard: OK.\u001b[0m\n");
+            appendOutput("\n\u001b[38;5;240m[+] /sdcard permission: OK.\u001b[0m\n");
         } else {
-            appendOutput("\n\u001b[1;33m[!] Izin penyimpanan ditolak \u2014 /sdcard tidak bisa dibuka.\n"
-                    + "    Aktifkan: Settings > Apps > Paynux > Permissions > Files and media,\n"
-                    + "    lalu buka sesi baru (tombol sesi > + New session).\u001b[0m\n");
+            appendOutput("\n\u001b[1;33m[!] Storage permission denied \u2014 /sdcard cannot be opened.\n"
+                    + "    Enable: Settings > Apps > Paynux > Permissions > Files and media,\n"
+                    + "    then open a new session (session key > + New session).\u001b[0m\n");
         }
         startUbuntuBoot();
     }
@@ -523,7 +523,7 @@ public class MainActivity extends Activity {
         appendOutput("  " + dot + "\u001b[97mAndroid "
                 + android.os.Build.VERSION.RELEASE + "\u001b[0m"
                 + " \u001b[90m\u00B7 v" + ver + "\u001b[0m\n");
-        appendOutput("  \u001b[38;5;240mpinch = zoom \u00B7 hold a session = close\u001b[0m\n");
+        appendOutput("  \u001b[38;5;240mPayNux \u00B7 Linux in your pocket\u001b[0m\n");
     }
 
     private volatile boolean actionModeActive = false;
@@ -980,11 +980,11 @@ public class MainActivity extends Activity {
     private void writeDefaultToolbarConfig(File f) {
         try {
             f.getParentFile().mkdirs();
-            writeText(f, "# Toolbar PayNux - format sama seperti extra-keys Termux.\n"
-                    + "# Ubah, lalu tutup-buka app. Hapus file ini untuk kembali ke default.\n"
-                    + "# Tombol: ESC TAB CTRL ALT HOME END PGUP PGDN UP DOWN LEFT RIGHT\n"
-                    + "#         SESS (panel sesi) KEYBOARD (\u2328) SPACE ENTER BACKSPACE\n"
-                    + "# Tombol lain = dikirim apa adanya (maks 3 huruf ditampilkan).\n"
+            writeText(f, "# PayNux toolbar - same format as Termux extra-keys.\n"
+                    + "# Edit, then reopen the app. Delete this file to restore the defaults.\n"
+                    + "# Keys: ESC TAB CTRL ALT HOME END PGUP PGDN UP DOWN LEFT RIGHT\n"
+                    + "#       SESS (session panel) KEYBOARD (\u2328) SPACE ENTER BACKSPACE\n"
+                    + "# Any other key is sent as-is (up to 3 letters are shown).\n"
                     + "extra-keys = [[ESC,/,-,HOME,UP,END,SESS],[TAB,CTRL,ALT,LEFT,DOWN,RIGHT,KEYBOARD]]\n");
         } catch (Throwable ignored) { }
     }
@@ -1424,7 +1424,7 @@ public class MainActivity extends Activity {
     }
 
     /**
-     * Warnai baris status aplikasi: [*] cyan, [+] hijau, [!] kuning.
+     * Warnai baris status aplikasi: [*] dan [+] redup (dim), [!] kuning.
      * Baris yang sudah mengandung escape (mis. pesan izin) dibiarkan.
      * Diterapkan di satu tempat supaya baris baru otomatis ikut berwarna.
      */
@@ -1436,8 +1436,9 @@ public class MainActivity extends Activity {
             String l = lines[i];
             if (l.indexOf('\u001b') >= 0) continue;
             String col = null;
-            if (l.startsWith("[*] ")) col = "\u001b[1;36m";
-            else if (l.startsWith("[+] ")) col = "\u001b[1;32m";
+            // Log boot: redup (dim) seperti baris motto, error tetap kuning.
+            if (l.startsWith("[*] ")) col = "\u001b[38;5;240m";
+            else if (l.startsWith("[+] ")) col = "\u001b[38;5;240m";
             else if (l.startsWith("[!] ")) col = "\u001b[1;33m";
             if (col != null) {
                 lines[i] = col + l + "\u001b[0m";
@@ -2226,7 +2227,7 @@ public class MainActivity extends Activity {
             startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW,
                     android.net.Uri.parse(url)));
         } catch (Throwable t) {
-            appendOutput("[!] Tidak ada aplikasi untuk membuka tautan.\n");
+            appendOutput("[!] No app found to open the link.\n");
             scheduleRender();
         }
     }
@@ -2241,12 +2242,12 @@ public class MainActivity extends Activity {
                 // TextView ini bukan editable, jadi "Tempel" bawaan
                 // Android tidak pernah muncul — tambahkan sendiri
                 // supaya bisa menempel clipboard ke shell.
-                menu.add(android.view.Menu.NONE, MENU_ID_PASTE, 100, "Tempel");
+                menu.add(android.view.Menu.NONE, MENU_ID_PASTE, 100, "Paste");
                 // Termux punya "Select all" di menu seleksi.
-                menu.add(android.view.Menu.NONE, MENU_ID_SELECT_ALL, 101, "Pilih semua");
+                menu.add(android.view.Menu.NONE, MENU_ID_SELECT_ALL, 101, "Select all");
                 // Termux: tautan bisa langsung dibuka dari menu seleksi.
                 if (asUrl(selectedText(view)) != null) {
-                    menu.add(android.view.Menu.NONE, MENU_ID_OPEN_URL, 99, "Buka tautan");
+                    menu.add(android.view.Menu.NONE, MENU_ID_OPEN_URL, 99, "Open link");
                 }
                 return true;
             }
@@ -3455,8 +3456,8 @@ public class MainActivity extends Activity {
                 + "case $- in *i*) ;; *) return 0 2>/dev/null ;; esac\n"
                 + "export LANG=C.UTF-8\n"
                 + "\n"
-                + "# riwayat perintah: tulis segera, jangan tunggu shell keluar\n"
-                + "# (sesi bisa dimatikan paksa saat app ditutup -> history biasa hilang)\n"
+                + "# command history: write it right away, do not wait for the shell to exit\n"
+                + "# (the session may be killed when the app closes -> normal history is lost)\n"
                 + "export HISTSIZE=4000 HISTFILESIZE=8000\n"
                 + "shopt -s histappend 2>/dev/null\n"
                 + "case \";${PROMPT_COMMAND:-};\" in\n"
@@ -3475,32 +3476,32 @@ public class MainActivity extends Activity {
                 + "  PS1='root@ubuntu:\\w# '\n"
                 + "fi\n"
                 + "\n"
-                + "# portcheck [port]       - siapa yang memakai port (aman, tidak menghentikan apa pun)\n"
-                + "# killport  <port> --force - hentikan HANYA proses pendengar di port itu\n"
+                + "# portcheck [port]       - who is using the port (safe, stops nothing)\n"
+                + "# killport  <port> --force - stop ONLY the process listening on that port\n"
                 + "portbusy() { (exec 3<>\"/dev/tcp/127.0.0.1/${1:-20128}\") 2>/dev/null; }\n"
                 + "portcheck() {\n"
                 + "  local p=${1:-20128}\n"
                 + "  if portbusy \"$p\"; then\n"
-                + "    echo \"[!] port $p sudah dipakai - jangan start instance kedua\"\n"
+                + "    echo \"[!] port $p is in use - do not start a second instance\"\n"
                 + "    command -v ss >/dev/null 2>&1 && ss -ltnp 2>/dev/null | grep \":$p \"\n"
                 + "    ps -eo pid,cmd 2>/dev/null | grep -E \"bin/9router$\" | grep -v grep | head -3\n"
-                + "    echo \"    -> pakai yang sudah jalan (mis. buka http://localhost:$p)\"\n"
-                + "    echo \"    -> atau jalankan instance baru di port lain\"\n"
-                + "    echo \"    -> paksa hentikan: killport $p --force\"\n"
+                + "    echo \"    -> use the running one (e.g. open http://localhost:$p)\"\n"
+                + "    echo \"    -> or run a new instance on another port\"\n"
+                + "    echo \"    -> force stop: killport $p --force\"\n"
                 + "  else\n"
-                + "    echo \"[+] port $p bebas\"\n"
+                + "    echo \"[+] port $p is free\"\n"
                 + "  fi\n"
                 + "}\n"
                 + "killport() {\n"
                 + "  local p=${1:-20128}\n"
                 + "  if [ \"${2:-}\" != \"--force\" ]; then\n"
-                + "    echo \"[!] killport $p butuh --force\"\n"
-                + "    echo \"    (port ini bisa dipakai layanan lain, mis. proxy model - mematikannya bisa merusak sesi lain)\"\n"
+                + "    echo \"[!] killport $p requires --force\"\n"
+                + "    echo \"    (this port may be used by another service, e.g. a model proxy - killing it can break other sessions)\"\n"
                 + "    return 1\n"
                 + "  fi\n"
-                + "  command -v fuser >/dev/null 2>&1 && fuser -k -n tcp \"$p\" 2>/dev/null || echo \"[!] fuser tidak ada (apt install psmisc)\"\n"
+                + "  command -v fuser >/dev/null 2>&1 && fuser -k -n tcp \"$p\" 2>/dev/null || echo \"[!] fuser not found (apt install psmisc)\"\n"
                 + "  sleep 1\n"
-                + "  if portbusy \"$p\"; then echo \"[!] port $p masih dipakai\"; else echo \"[+] port $p dibebaskan\"; fi\n"
+                + "  if portbusy \"$p\"; then echo \"[!] port $p is still in use\"; else echo \"[+] port $p released\"; fi\n"
                 + "}\n";
 
     private static void writeText(File f, String text) throws Exception {
@@ -3617,7 +3618,7 @@ public class MainActivity extends Activity {
                 command.add("-b");
                 command.add(shared.getAbsolutePath() + ":/sdcard");
             } else {
-                appendOutput("\u001b[1;33m[!] /sdcard tidak di-bind: izin penyimpanan belum aktif.\u001b[0m\n");
+                appendOutput("\u001b[1;33m[!] /sdcard not mounted: storage permission is not enabled yet.\u001b[0m\n");
             }
         }
 
