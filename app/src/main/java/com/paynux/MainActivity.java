@@ -2144,6 +2144,7 @@ public class MainActivity extends Activity {
     // id menu seleksi milik aplikasi (harus != id sistem)
     private static final int MENU_ID_PASTE = 0x7f0a0001;
     private static final int MENU_ID_OPEN_URL = 0x7f0a0002;
+    private static final int MENU_ID_SELECT_ALL = 0x7f0a0003;
 
     private static boolean exitLogPruned = false;
 
@@ -2220,6 +2221,8 @@ public class MainActivity extends Activity {
                 // Android tidak pernah muncul — tambahkan sendiri
                 // supaya bisa menempel clipboard ke shell.
                 menu.add(android.view.Menu.NONE, MENU_ID_PASTE, 100, "Tempel");
+                // Termux punya "Select all" di menu seleksi.
+                menu.add(android.view.Menu.NONE, MENU_ID_SELECT_ALL, 101, "Pilih semua");
                 // Termux: tautan bisa langsung dibuka dari menu seleksi.
                 if (asUrl(selectedText(view)) != null) {
                     menu.add(android.view.Menu.NONE, MENU_ID_OPEN_URL, 99, "Buka tautan");
@@ -2250,6 +2253,15 @@ public class MainActivity extends Activity {
                     // tempel ke shell, bukan ke TextView (read-only)
                     pasteFromClipboard();
                     mode.finish();
+                    return true;
+                }
+                if (item.getItemId() == MENU_ID_SELECT_ALL) {
+                    // android.jar di perangkat ini tidak punya TextView.selectAll()
+                    CharSequence t = view.getText();
+                    if (t instanceof android.text.Spannable) {
+                        android.text.Selection.setSelection(
+                                (android.text.Spannable) t, 0, t.length());
+                    }
                     return true;
                 }
                 if (item.getItemId() == MENU_ID_OPEN_URL) {
