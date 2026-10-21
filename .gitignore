@@ -50,10 +50,6 @@ checkpoints/
 *.bak-*
 *.v2-pre*
 
-# Source and script backups
-*.orig
-*.pre-*
-*.bak[0-9]*
-*.bak
-*.bak-*
-*.v2-pre*
+# Arsip lokal audit: salinan sumber sebelum patch & skrip sekali pakai
+app/src/main/java/com/paynux/MainActivity.java.before-keyboard-button
+patch-038-killexit-exitlog.py
