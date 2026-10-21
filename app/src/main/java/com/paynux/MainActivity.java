@@ -1814,6 +1814,8 @@ public class MainActivity extends Activity {
                 () -> { if (holder[0] != null) holder[0].dismiss(); copyAllLog(); });
         addSessionAction(actions, "Paste",
                 () -> { if (holder[0] != null) holder[0].dismiss(); pasteFromClipboard(); });
+        addSessionAction(actions, "Reset",
+                () -> { if (holder[0] != null) holder[0].dismiss(); resetTerminal(); });
         addSessionAction(actions, "Close",
                 () -> { if (holder[0] != null) holder[0].dismiss(); });
 
@@ -2029,6 +2031,25 @@ public class MainActivity extends Activity {
                     "Log copied (" + lines + " lines)",
                     android.widget.Toast.LENGTH_SHORT).show();
         }
+    }
+
+    /**
+     * Reset tampilan terminal (ala "Reset terminal" Termux): buang scrollback
+     * dan layar yang kacau (mis. setelah 'cat' file biner). Shell tetap jalan
+     * dan akan menggambar prompt baru pada output berikutnya.
+     */
+    private void resetTerminal() {
+        if (emulator == null) return;
+        emulator.reset();
+        altScreenShown = false;
+        actionModeActive = false;
+        renderedScrollStart = 0;
+        renderedScrollCount = 0;
+        renderedScrollEnd = -1;
+        userAtBottom = true;
+        if (scrollbackView != null) scrollbackView.setText("");
+        if (screenView != null) screenView.setText("");
+        scheduleRender();
     }
 
     private void changeFontSize(int delta) {
