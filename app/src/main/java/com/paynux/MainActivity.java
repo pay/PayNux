@@ -1128,6 +1128,9 @@ public class MainActivity extends Activity {
     private static final int MAX_VIEW_HISTORY_LINES = 600;
     private static final int VIEW_HISTORY_SLACK = 200;
 
+    /** Batas riwayat saat sistem menekan memori (onTrimMemory/onLowMemory). */
+    private static final int TRIM_KEEP_LINES = 500;
+
     private final Runnable renderRunnable = () -> {
         renderPending = false;
         renderScreen();
@@ -3211,6 +3214,40 @@ public class MainActivity extends Activity {
         } catch (Throwable ignored) { }
         new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
                 () -> android.os.Process.killProcess(android.os.Process.myPid()), 400);
+    }
+
+    // ============================================================
+    // TEKANAN MEMORI (LMK)
+    // ============================================================
+
+    /**
+     * Android memberi sinyal memori sempit sebelum membunuh proses. Tanpa
+     * handler ini riwayat 4000 baris (teks + span, puluhan MB) tetap ditahan
+     * sampai LowMemoryKiller mematikan aplikasi — gejala "minta tutup app".
+     */
+    @Override
+    public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        if (level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW
+                || level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL
+                || level == android.content.ComponentCallbacks2.TRIM_MEMORY_COMPLETE) {
+            trimHistory();
+        }
+    }
+
+    @Override
+    public void onLowMemory() {
+        super.onLowMemory();
+        trimHistory();
+    }
+
+    /** Pangkas riwayat lama supaya proses tidak dibunuh LMK. */
+    private void trimHistory() {
+        if (emulator == null) return;
+        try {
+            emulator.trimScrollback(TRIM_KEEP_LINES);
+        } catch (Throwable ignored) { }
+        scheduleRender();
     }
 
     @Override
