@@ -1809,9 +1809,29 @@ public class MainActivity extends Activity {
      * copyAllLog(), pasteFromClipboard(), closeSession(), sessionPreview().
      */
     private void showSessionList() {
+        final android.app.AlertDialog[] holder = new android.app.AlertDialog[1];
+        LinearLayout panel = buildSessionPanel(() -> {
+            if (holder[0] != null) holder[0].dismiss();
+        });
+        android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(
+                this, android.R.style.Theme_Material_Dialog_Alert)
+                .setView(panel)
+                .create();
+        holder[0] = dlg;
+        dlg.show();
+        if (dlg.getWindow() != null) {
+            dlg.getWindow().setBackgroundDrawable(
+                    new android.graphics.drawable.ColorDrawable(Color.rgb(18, 18, 18)));
+        }
+    }
+
+    /**
+     * Isi panel sesi (dipakai dialog maupun drawer geser).
+     * @param onDismiss dijalankan sebelum aksi apa pun (tutup dialog/drawer)
+     */
+    private LinearLayout buildSessionPanel(final Runnable onDismiss) {
         final List<Sess> snap = new ArrayList<>(sessions);
         final int n = snap.size();
-        final android.app.AlertDialog[] holder = new android.app.AlertDialog[1];
 
         final int BG_PANEL = Color.rgb(18, 18, 18);
         final int BG_ROW   = Color.rgb(24, 24, 24);
@@ -1883,11 +1903,11 @@ public class MainActivity extends Activity {
             row.addView(t2);
 
             row.setOnClickListener(v -> {
-                if (holder[0] != null) holder[0].dismiss();
+                onDismiss.run();
                 if (sessions.contains(sc)) activate(sc);
             });
             row.setOnLongClickListener(v -> {
-                if (holder[0] != null) holder[0].dismiss();
+                onDismiss.run();
                 new android.app.AlertDialog.Builder(this,
                         android.R.style.Theme_Material_Dialog_Alert)
                         .setMessage("Close session " + sc.id + "?")
@@ -1914,26 +1934,16 @@ public class MainActivity extends Activity {
         panel.addView(actions);
 
         addSessionAction(actions, "+ New",
-                () -> { if (holder[0] != null) holder[0].dismiss(); newSession(); });
+                () -> { onDismiss.run(); newSession(); });
         addSessionAction(actions, "Copy log",
-                () -> { if (holder[0] != null) holder[0].dismiss(); copyAllLog(); });
+                () -> { onDismiss.run(); copyAllLog(); });
         addSessionAction(actions, "Paste",
-                () -> { if (holder[0] != null) holder[0].dismiss(); pasteFromClipboard(); });
+                () -> { onDismiss.run(); pasteFromClipboard(); });
         addSessionAction(actions, "Reset",
-                () -> { if (holder[0] != null) holder[0].dismiss(); resetTerminal(); });
-        addSessionAction(actions, "Close",
-                () -> { if (holder[0] != null) holder[0].dismiss(); });
+                () -> { onDismiss.run(); resetTerminal(); });
+        addSessionAction(actions, "Close", onDismiss);
 
-        android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(
-                this, android.R.style.Theme_Material_Dialog_Alert)
-                .setView(panel)
-                .create();
-        holder[0] = dlg;
-        dlg.show();
-        if (dlg.getWindow() != null) {
-            dlg.getWindow().setBackgroundDrawable(
-                    new android.graphics.drawable.ColorDrawable(BG_PANEL));
-        }
+        return panel;
     }
 
     /** Tombol aksi kecil di panel sesi (warna tetap cyan). */
