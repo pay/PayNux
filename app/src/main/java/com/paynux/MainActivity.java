@@ -98,6 +98,7 @@ public class MainActivity extends Activity {
 
     private int fontSizeSp = 14;
     private boolean userAtBottom = true;
+    private boolean altScreenShown = false;   // riwayat disembunyikan saat alt-screen
     private boolean renderPending = false;
     private int lastRows = -1, lastCols = -1;
 
@@ -654,6 +655,11 @@ public class MainActivity extends Activity {
                     int distance = child.getHeight()
                             - (scrollY + v.getHeight());
                     userAtBottom = distance < 48;
+                    // alt-screen: tidak ada riwayat untuk digeser -> tempel ke dasar
+                    if (!userAtBottom && emulator != null && emulator.isAltScreen()) {
+                        userAtBottom = true;
+                        v.post(MainActivity.this::scrollToBottom);
+                    }
                 });
 
         // --------------------------------------------------------
@@ -1357,6 +1363,30 @@ public class MainActivity extends Activity {
     private void syncScrollback() {
         if (emulator == null || scrollbackView == null) return;
         if (actionModeActive && scrollbackView.hasSelection()) return;
+
+        // Alt-screen (nano/vim/htop): seperti Termux, riwayat tidak ditampilkan
+        // dan layar tidak bisa digeser ke atas.
+        if (emulator.isAltScreen()) {
+            if (!altScreenShown) {
+                altScreenShown = true;
+                scrollbackView.setText("");
+                renderedScrollStart = 0;
+                renderedScrollCount = 0;
+                renderedScrollEnd = -1;
+            }
+            if (!userAtBottom) {
+                userAtBottom = true;
+                if (terminalScroll != null) terminalScroll.post(this::scrollToBottom);
+            }
+            return;
+        }
+        if (altScreenShown) {          // keluar alt-screen -> gambar ulang riwayat
+            altScreenShown = false;
+            scrollbackView.setText("");
+            renderedScrollStart = 0;
+            renderedScrollCount = 0;
+            renderedScrollEnd = -1;
+        }
 
         long firstIdx = emulator.snapshotScrollback(scrollSnapshot);
         int total = scrollSnapshot.size();
