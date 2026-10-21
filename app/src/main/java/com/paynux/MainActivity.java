@@ -645,7 +645,11 @@ public class MainActivity extends Activity {
         scrollbackView.setPadding(16, 8, 16, 0);
         scrollbackView.setTextIsSelectable(true); // SELECT: crash isolation test
         installCopyAllSelectionAction(scrollbackView);
-        scrollbackView.setLineSpacing(2, 1.0f);
+        // Tanpa padding font + tanpa jarak baris tambahan: font fallback untuk
+        // glyph kotak (DroidSansMono tidak punya ─..░) punya metrik
+        // lebih tinggi, jadi jarak ekstra ini terlihat sebagai baris kosong.
+        scrollbackView.setIncludeFontPadding(false);
+        scrollbackView.setLineSpacing(0, 1.0f);
 
         // --------------------------------------------------------
         // SCREEN (grid terminal saat ini; tanpa wrap agar kolom
@@ -660,7 +664,8 @@ public class MainActivity extends Activity {
         screenView.setPadding(16, 0, 16, 4);
         screenView.setTextIsSelectable(true); // SELECT: crash isolation test
         installCopyAllSelectionAction(screenView);
-        screenView.setLineSpacing(2, 1.0f);
+        screenView.setIncludeFontPadding(false);
+        screenView.setLineSpacing(0, 1.0f);
         screenView.setHorizontallyScrolling(true);
 
         LinearLayout inner = new LinearLayout(this);
