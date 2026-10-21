@@ -1064,7 +1064,8 @@ public class MainActivity extends Activity {
 
     private void openDrawer() {
         if (drawer == null) return;
-        fillDrawer();          // selalu segar: isi sesi bisa berubah
+        boolean wasHidden = !drawerOpen || drawer.getVisibility() != View.VISIBLE;
+        if (wasHidden) fillDrawer();   // segar saat dibuka; jangan saat sudah terbuka
         drawerOpen = true;
         drawer.setVisibility(View.VISIBLE);
         drawerScrim.setVisibility(View.VISIBLE);
@@ -1136,7 +1137,12 @@ public class MainActivity extends Activity {
                 case android.view.MotionEvent.ACTION_CANCEL: {
                     if (!edge) break;
                     float dx = ev.getX() - downX;
+                    float dy = ev.getY() - downY;
                     edge = false;
+                    // Ketukan (nyaris tanpa gerakan): bukan gestur drawer.
+                    // Dulu cabang ini memanggil openDrawer() -> isi drawer
+                    // dibangun ulang -> tombol yang ditekan hilang sebelum klik.
+                    if (Math.abs(dx) <= dp(10) && Math.abs(dy) <= dp(10)) break;
                     if (drawerOpen) {
                         if (dx < -dp(70)) closeDrawer(); else openDrawer();
                     } else if (dx > dp(90)) {
