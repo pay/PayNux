@@ -751,6 +751,10 @@ public final class TerminalEmulator {
         newCols = Math.max(newCols, 4);
         if (newRows == rows && newCols == cols) return;
 
+        // Kolom berubah (zoom font / rotasi): bungkus ulang isi agar tidak
+        // terpotong. Di alt-screen biarkan aplikasi menggambar ulang sendiri.
+        if (newCols != cols && !altActive) rewrapAll(newCols);
+
         Line[] ns = new Line[newRows];
         if (newRows <= rows) {
             // Mengecil (keyboard muncul): buang dulu baris KOSONG di
@@ -809,6 +813,89 @@ public final class TerminalEmulator {
             if (l.text[c] != ' ' && l.text[c] != 0) return false;
         }
         return true;
+    }
+
+    /** Panjang teks efektif: tanpa spasi/nol di kanan. */
+    private static int effectiveLen(Line l) {
+        int n = l.text.length;
+        while (n > 0 && (l.text[n - 1] == ' ' || l.text[n - 1] == 0)) n--;
+        return n;
+    }
+
+    private static Line sliceTo(Line acc, int len, int newCols) {
+        if (len >= newCols) return acc;
+        Line n = new Line(newCols);
+        System.arraycopy(acc.text, 0, n.text, 0, len);
+        System.arraycopy(acc.fg, 0, n.fg, 0, len);
+        System.arraycopy(acc.bg, 0, n.bg, 0, len);
+        System.arraycopy(acc.attrs, 0, n.attrs, 0, len);
+        return n;
+    }
+
+    /**
+     * Ulang-bungkus SELURUH isi (scrollback + layar) ke jumlah kolom baru.
+     * Dipakai saat font di-zoom: tanpa ini baris lama hanya dipotong/di-padding
+     * sehingga log tidak lagi pas dengan lebar layar.
+     * Baris yang terisi sampai kolom terakhir dianggap menyambung ke baris
+     * berikutnya (heuristik yang sama dipakai terminal saat menyalin teks).
+     */
+    private void rewrapAll(int newCols) {
+        ArrayList<Line> src = new ArrayList<>(scrollback.size() + rows);
+        src.addAll(scrollback);
+        for (int r = 0; r < rows; r++) src.add(screen[r]);
+
+        ArrayList<Line> out = new ArrayList<>(src.size() + 8);
+        Line acc = new Line(newCols);
+        int len = 0;
+        boolean pending = false;
+
+        for (int i = 0; i < src.size(); i++) {
+            Line l = src.get(i);
+            if (l == null) l = new Line(cols);
+            int end = effectiveLen(l);
+            boolean joined = end >= l.text.length;      // penuh -> menyambung
+            if (joined) end = l.text.length;
+            for (int c = 0; c < end; c++) {
+                if (len == newCols) { out.add(acc); acc = new Line(newCols); len = 0; }
+                acc.text[len] = l.text[c];
+                acc.fg[len] = l.fg[c];
+                acc.bg[len] = l.bg[c];
+                acc.attrs[len] = l.attrs[c];
+                len++;
+            }
+            if (!joined) {
+                if (len > 0 || pending) { out.add(sliceTo(acc, len, newCols)); acc = new Line(newCols); len = 0; }
+                else out.add(new Line(newCols));
+                pending = false;
+            } else {
+                pending = true;
+            }
+        }
+        if (len > 0 || pending) out.add(sliceTo(acc, len, newCols));
+
+        int screenStart = Math.max(0, out.size() - rows);
+        int oldSize = scrollback.size();
+        scrollback.clear();
+        for (int i = 0; i < screenStart; i++) scrollback.addLast(out.get(i));
+        while (scrollback.size() > MAX_SCROLLBACK) scrollback.removeFirst();
+        screen = new Line[rows];
+        for (int r = 0; r < rows; r++) {
+            int i = screenStart + r;
+            screen[r] = (i < out.size()) ? out.get(i) : new Line(newCols);
+        }
+        if (scrollback.size() > oldSize) scrollTotal += scrollback.size() - oldSize;
+
+        cols = newCols;
+        int lastRow = Math.max(0, Math.min(rows - 1, out.size() - screenStart - 1));
+        curRow = lastRow;
+        curCol = Math.min(cols - 1, effectiveLen(screen[curRow]));
+        wrapPending = false;
+        scrollTop = 0;
+        scrollBottom = rows - 1;
+        tabStops = new int[cols];
+        resetTabs();
+        scrollDirty = true;
+        markScreen();
     }
 
     private static Line resizeLine(Line l, int newCols) {

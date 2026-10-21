@@ -1421,6 +1421,12 @@ public class MainActivity extends Activity {
         lastCols = cols;
         emulator.resize(rows, cols);
         if (session != null) session.resize(rows, cols);
+        // Isi sudah dibungkus ulang oleh emulator (atau baris/kolom berubah):
+        // buang hasil render lama supaya log digambar ulang dengan lebar baru.
+        renderedScrollStart = 0;
+        renderedScrollCount = 0;
+        renderedScrollEnd = -1;
+        if (scrollbackView != null) scrollbackView.setText("");
         scheduleRender();
     }
 
