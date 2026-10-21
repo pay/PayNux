@@ -847,19 +847,33 @@ public final class TerminalEmulator {
         src.addAll(scrollback);
         for (int r = 0; r < rows; r++) src.add(screen[r]);
 
+        // Kursor dilacak per baris-logis (bukan indeks sel datar): baris
+        // pendek tidak memakai lebar penuh, jadi posisi kursor harus ikut
+        // baris sumbernya, bukan dihitung ulang dari jumlah karakter.
+        final int cursorSrc = scrollback.size() + curRow;
+        int cursorOutBase = -1;   // baris output tempat baris sumber kursor mulai
+        int cursorColBase = 0;    // kolom dalam baris output itu
+
         ArrayList<Line> out = new ArrayList<>(src.size() + 8);
         Line acc = new Line(newCols);
         int len = 0;
         boolean pending = false;
+        int accIndex = 0;         // indeks di 'out' tempat acc ini akan diletakkan
 
         for (int i = 0; i < src.size(); i++) {
             Line l = src.get(i);
             if (l == null) l = new Line(cols);
+            if (i == cursorSrc) { cursorOutBase = accIndex; cursorColBase = len; }
             int end = effectiveLen(l);
-            boolean joined = end >= l.text.length;      // penuh -> menyambung
+            boolean joined = end >= l.text.length;   // penuh -> menyambung
             if (joined) end = l.text.length;
             for (int c = 0; c < end; c++) {
-                if (len == newCols) { out.add(acc); acc = new Line(newCols); len = 0; }
+                if (len == newCols) {
+                    out.add(acc);
+                    accIndex = out.size();
+                    acc = new Line(newCols);
+                    len = 0;
+                }
                 acc.text[len] = l.text[c];
                 acc.fg[len] = l.fg[c];
                 acc.bg[len] = l.bg[c];
@@ -867,14 +881,23 @@ public final class TerminalEmulator {
                 len++;
             }
             if (!joined) {
-                if (len > 0 || pending) { out.add(sliceTo(acc, len, newCols)); acc = new Line(newCols); len = 0; }
-                else out.add(new Line(newCols));
+                if (len > 0 || pending) {
+                    out.add(sliceTo(acc, len, newCols));
+                } else {
+                    out.add(new Line(newCols));
+                }
+                accIndex = out.size();
+                acc = new Line(newCols);
+                len = 0;
                 pending = false;
             } else {
                 pending = true;
             }
         }
-        if (len > 0 || pending) out.add(sliceTo(acc, len, newCols));
+        if (len > 0 || pending) {
+            out.add(sliceTo(acc, len, newCols));
+            accIndex = out.size();
+        }
 
         int screenStart = Math.max(0, out.size() - rows);
         int oldSize = scrollback.size();
@@ -889,9 +912,14 @@ public final class TerminalEmulator {
         if (scrollback.size() > oldSize) scrollTotal += scrollback.size() - oldSize;
 
         cols = newCols;
-        int lastRow = Math.max(0, Math.min(rows - 1, out.size() - screenStart - 1));
-        curRow = lastRow;
-        curCol = Math.min(cols - 1, effectiveLen(screen[curRow]));
+        if (cursorOutBase >= 0) {
+            int cells = cursorColBase + Math.max(0, curCol);
+            curRow = Math.max(0, Math.min(rows - 1, cursorOutBase + cells / newCols));
+            curCol = Math.max(0, Math.min(cols - 1, cells % newCols));
+        } else {
+            curRow = 0;
+            curCol = 0;
+        }
         wrapPending = false;
         scrollTop = 0;
         scrollBottom = rows - 1;
