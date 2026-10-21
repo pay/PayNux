@@ -74,7 +74,8 @@ public class MainActivity extends Activity {
     private static int nextSessId = 1;
     private static volatile MainActivity current;   // Activity yang sedang tampil (atau null)
     private Button sessBtn;
-    private Button kbdFab; // tombol melayang: buka keyboard
+    private Button kbdFab; // tombol melayang: buka/tutup keyboard
+    private boolean keyboardVisible = false;
 
     // emulator/session = penunjuk ke sesi AKTIF (dipakai kode lama)
     private static TerminalEmulator emulator;
@@ -126,6 +127,7 @@ public class MainActivity extends Activity {
 
         current = this;
         installCrashLogger();
+        requestStoragePermission();
         try {
             android.content.Intent keep = new android.content.Intent(this, KeepAliveService.class);
             if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(keep);
@@ -254,7 +256,97 @@ public class MainActivity extends Activity {
         }
     }
 
+    // ============================================================
+    // DIAGNOSTIK: catat SEMUA exit abnormal -> /root/paynux-exit-all.log
+    // (paynux-exit.log tetap hanya CRASH_NATIVE). Dedup per timestamp.
+    // ============================================================
+    private static String exitAllName(int r) {
+        switch (r) {
+            case 0: return "UNKNOWN";
+            case 1: return "EXIT_SELF";
+            case 2: return "SIGNALED";
+            case 3: return "LOW_MEMORY";
+            case 4: return "CRASH";
+            case 5: return "CRASH_NATIVE";
+            case 6: return "ANR";
+            case 7: return "INITIALIZATION_FAILURE";
+            case 8: return "PERMISSION_CHANGE";
+            case 9: return "EXCESSIVE_RESOURCE_USAGE";
+            case 10: return "USER_REQUESTED";
+            case 11: return "USER_STOPPED";
+            case 12: return "DEPENDENCY_DIED";
+            case 13: return "OTHER";
+            case 14: return "FREEZER";
+            case 15: return "PACKAGE_STATE_CHANGE";
+            case 16: return "PACKAGE_UPDATED";
+            default: return "REASON_" + r;
+        }
+    }
+
+    private void logAllExitReasons() {
+        if (android.os.Build.VERSION.SDK_INT < 30) return;
+        try {
+            java.io.File home = new java.io.File(getFilesDir(), "home");
+            if (!home.exists()) home.mkdirs();
+            // Exit disengaja (tombol Exit) menulis penanda ini: bukan crash.
+            if (new java.io.File(home, ".paynux-clean-exit").exists()) return;
+
+            android.app.ActivityManager am = (android.app.ActivityManager)
+                    getSystemService(android.content.Context.ACTIVITY_SERVICE);
+            java.util.List<android.app.ApplicationExitInfo> l =
+                    am.getHistoricalProcessExitReasons(getPackageName(), 0, 5);
+            if (l == null || l.isEmpty()) return;
+
+            java.io.File lastF = new java.io.File(home, ".paynux-exitall-last");
+            long last = 0;
+            try {
+                if (lastF.exists()) {
+                    java.io.BufferedReader br = new java.io.BufferedReader(new java.io.FileReader(lastF));
+                    try { last = Long.parseLong(br.readLine().trim()); } finally { br.close(); }
+                }
+            } catch (Throwable ignored) { }
+
+            StringBuilder sb = new StringBuilder();
+            long newest = last;
+            for (int k = l.size() - 1; k >= 0; k--) {          // tertua -> terbaru
+                android.app.ApplicationExitInfo i = l.get(k);
+                long ts = i.getTimestamp();
+                if (ts <= last) continue;
+                if (ts > newest) newest = ts;
+                int r = i.getReason();
+                if (r == 1 || r == 10 || r == 11 || r == 15 || r == 16) continue;   // normal
+                sb.append(new java.util.Date(ts)).append(" reason=").append(exitAllName(r))
+                  .append(" status=").append(i.getStatus())
+                  .append(" importance=").append(i.getImportance())
+                  .append(" rssKB=").append(i.getRss())
+                  .append(" desc=").append(i.getDescription()).append('\n');
+            }
+            if (sb.length() > 0) {
+                java.io.File f = new java.io.File(home, "paynux-exit-all.log");
+                java.util.List<String> keep = new java.util.ArrayList<>();
+                if (f.exists()) {
+                    java.io.BufferedReader br = new java.io.BufferedReader(new java.io.FileReader(f));
+                    try { String s; while ((s = br.readLine()) != null) keep.add(s); } finally { br.close(); }
+                }
+                for (String s : sb.toString().split("\n")) if (!s.isEmpty()) keep.add(s);
+                while (keep.size() > 100) keep.remove(0);                    // pangkas: 100 baris terakhir
+                java.io.FileOutputStream o = new java.io.FileOutputStream(f, false);
+                try {
+                    StringBuilder out = new StringBuilder();
+                    for (String s : keep) out.append(s).append('\n');
+                    o.write(out.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                } finally { o.close(); }
+            }
+            if (newest > last) {
+                java.io.FileOutputStream o = new java.io.FileOutputStream(lastF, false);
+                try { o.write(String.valueOf(newest).getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
+                finally { o.close(); }
+            }
+        } catch (Throwable ignored) { }
+    }
+
     private void reportPreviousExit() {
+        logAllExitReasons();      // diagnostik; harus SEBELUM penanda clean-exit dihapus
         if (android.os.Build.VERSION.SDK_INT < 30) return;
         pruneExitLog();
         // clean_exit: exit disengaja (tombol Exit / lepas wakelock) bukan crash.
@@ -352,38 +444,79 @@ public class MainActivity extends Activity {
         return t.length() <= w ? t : t.substring(0, Math.max(0, w));
     }
 
+    // ============================================================
+    // IZIN STORAGE (untuk bind /sdcard ke dalam Ubuntu)
+    // ============================================================
+
+    private static final int REQ_STORAGE = 1001;
+
+    /** targetSdk 28 -> izin runtime WRITE_EXTERNAL_STORAGE cukup untuk /sdcard. */
+    private void requestStoragePermission() {
+        if (android.os.Build.VERSION.SDK_INT < 23) return;
+        try {
+            if (checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                    == android.content.pm.PackageManager.PERMISSION_GRANTED) return;
+            requestPermissions(new String[]{
+                    android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                    android.Manifest.permission.READ_EXTERNAL_STORAGE}, REQ_STORAGE);
+        } catch (Throwable t) {
+            bootLog("[!] storage permission: " + t + "\n");
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int req, String[] perms, int[] res) {
+        super.onRequestPermissionsResult(req, perms, res);
+        if (req != REQ_STORAGE) return;
+        boolean ok = res.length > 0
+                && res[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
+        bootLog(ok ? "[+] izin storage: OK\n" : "[!] izin storage ditolak\n");
+        if (!ok) {
+            appendOutput("\n\u001b[1;33m[!] Izin penyimpanan ditolak \u2014 /sdcard tidak bisa dibuka.\n"
+                    + "    Aktifkan: Settings > Apps > Paynux > Permissions > Files and media,\n"
+                    + "    lalu buka sesi baru (menu > New session).\u001b[0m\n");
+        }
+    }
+
     /** Banner simpel: logo PAYNUX gradasi + satu baris info. */
     private void showBanner() {
         int cols = approxCols();
         String ver = appVersion();
 
-        if (cols < 24) { // layar sangat sempit: tanpa logo
+        if (cols < 26) { // layar sangat sempit: tanpa logo
             appendOutput("\u001b[1;38;5;45mPAYNUX\u001b[0m \u001b[90mv" + ver + "\u001b[0m\n\n");
             return;
         }
 
-        String[][] art = {
-            {"\u250C\u2500\u2510", "\u251C\u2500\u2518", "\u2534  "},                     // P
-            {"\u250C\u2500\u2510", "\u251C\u2500\u2524", "\u2534 \u2534"},               // A
-            {"\u252C \u252C", "\u2514\u252C\u2518", " \u2534 "},                           // Y
-            {"\u250C\u2510\u250C", "\u2502\u2502\u2502", "\u2518\u2514\u2518"},         // N
-            {"\u252C \u252C", "\u2502 \u2502", "\u2514\u2500\u2518"},                     // U
-            {"\u2500\u2510 \u252C", "\u250C\u2534\u252C\u2518", "\u2534 \u2514\u2500"} // X
+        // Logo blok gaya "pagga": 23 kolom, 3 baris. Karakter U+2591 (light
+        // shade) jadi pengisi gelap supaya hurufnya menonjol; sisa karakter
+        // diberi gradasi cyan -> biru per kolom.
+        String[] art = {
+            "\u2588\u2580\u2588\u2591\u2588\u2580\u2588\u2591\u2588\u2591\u2588\u2591\u2588\u2580\u2588\u2591\u2588\u2591\u2588\u2591\u2588\u2591\u2588",
+            "\u2588\u2580\u2580\u2591\u2588\u2580\u2588\u2591\u2591\u2588\u2591\u2591\u2588\u2591\u2588\u2591\u2588\u2591\u2588\u2591\u2584\u2580\u2584",
+            "\u2580\u2591\u2591\u2591\u2580\u2591\u2580\u2591\u2591\u2580\u2591\u2591\u2580\u2591\u2580\u2591\u2580\u2580\u2580\u2591\u2580\u2591\u2580"
         };
         int[] shade = {51, 45, 39, 33, 99, 135}; // cyan -> biru -> ungu
 
         appendOutput("\n");
-        for (int row = 0; row < 3; row++) {
+        for (int row = 0; row < art.length; row++) {
+            String line = art[row];
             StringBuilder sb = new StringBuilder("  ");
-            for (int l = 0; l < art.length; l++) {
-                sb.append("\u001b[1;38;5;").append(shade[l]).append('m')
-                  .append(art[l][row]);
+            for (int i = 0; i < line.length(); i++) {
+                char ch = line.charAt(i);
+                if (ch == '\u2591') {
+                    sb.append("\u001b[38;5;238m").append(ch);
+                } else {
+                    int sh = shade[Math.min(shade.length - 1,
+                            i * shade.length / Math.max(1, line.length()))];
+                    sb.append("\u001b[1;38;5;").append(sh).append('m').append(ch);
+                }
             }
             sb.append("\u001b[0m\n");
             appendOutput(sb.toString());
         }
         // pemisah gradasi selebar logo
-        int sepLen = Math.min(22, Math.max(8, cols - 4));
+        int sepLen = Math.min(23, Math.max(8, cols - 4));
         StringBuilder sep = new StringBuilder("  ");
         for (int i = 0; i < sepLen; i++) {
             int sh = shade[Math.min(shade.length - 1, i * shade.length / sepLen)];
@@ -398,7 +531,7 @@ public class MainActivity extends Activity {
         appendOutput("  " + dot + "\u001b[97mAndroid "
                 + android.os.Build.VERSION.RELEASE + "\u001b[0m"
                 + " \u001b[90m\u00B7 v" + ver + "\u001b[0m\n");
-        appendOutput("  \u001b[38;5;240mcubit = zoom \u00B7 hold a session = close\u001b[0m\n\n");
+        appendOutput("  \u001b[38;5;240mpinch = zoom \u00B7 hold a session = close\u001b[0m\n\n");
     }
 
     private volatile boolean actionModeActive = false;
@@ -614,68 +747,54 @@ public class MainActivity extends Activity {
                 handleHardwareKey(keyCode, event));
 
         // --------------------------------------------------------
-        // EXTRA KEYS BAR — SATU baris kompak ala Termux
-        // (otomatis sembunyi saat keyboard tertutup — lihat
-        //  listener insets setelah setContentView)
-        // --------------------------------------------------------
-
+        // EXTRA KEYS BAR — tata letak sesskey5
         keyBar = new LinearLayout(this);
         keyBar.setOrientation(LinearLayout.VERTICAL);
         keyBar.setBackgroundColor(BG3);
 
-        // garis tipis pemisah di atas toolbar
         View topLine = new View(this);
         topLine.setBackgroundColor(Color.rgb(60, 60, 60));
         keyBar.addView(topLine, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 1));
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(1)));
 
-        // satu baris yang bisa digeser ke samping: tombol cukup
-        // besar untuk jari, tidak lagi dijepit 11 tombol sekaligus
-        android.widget.HorizontalScrollView keyScroll =
-                new android.widget.HorizontalScrollView(this);
-        keyScroll.setHorizontalScrollBarEnabled(false);
-        keyScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
-
-        LinearLayout keyRow = new LinearLayout(this);
-        keyRow.setOrientation(LinearLayout.HORIZONTAL);
-        keyScroll.addView(keyRow, new android.widget.HorizontalScrollView.LayoutParams(
-                android.widget.HorizontalScrollView.LayoutParams.WRAP_CONTENT,
-                android.widget.HorizontalScrollView.LayoutParams.WRAP_CONTENT));
-
+        LinearLayout rowA = new LinearLayout(this);
+        rowA.setOrientation(LinearLayout.HORIZONTAL);
+        rowA.setBaselineAligned(false);
         String[][] row1 = {
-            {"ESC",  "\u001b"},
-            {"TAB",  "\t"},
-            {"CTRL", ""},
-            {"ALT",  ""},
-            {"SESS", ""},
-            {"NEW",  ""},
-            {"\u2190", "\u001b[D"},
-            {"\u2191", "\u001b[A"},
-            {"\u2193", "\u001b[B"},
-            {"\u2192", "\u001b[C"},
-            {"COPY", ""},
-            {"PASTE", ""},
-            {"HOME", "\u001b[H"},
-            {"END",  "\u001b[F"},
-            {"PGUP", "\u001b[5~"},
-            {"PGDN", "\u001b[6~"},
-            {"-",    "-"},
-            {"/",    "/"},
-            {"|",    "|"},
-            {"~",    "~"},
-            {"^C",    ""},
-            {"^D",    ""},
+            {"ESC", "\u001b"}, {"/", "/"}, {"-", "-"},
+            {"HOME", "\u001b[H"}, {"\u2191", "\u001b[A"},
+            {"END", "\u001b[F"}, {"SESS", ""}
         };
-
         for (String[] k : row1) {
-            keyRow.addView(makeKey(k[0], k[1]),
-                    new LinearLayout.LayoutParams(dp(k[0].length() > 2 ? 48 : 38), dp(34)));
+            Button b = makeKey(k[0], k[1]);
+            if ("SESS".equals(k[0])) {
+                b.setOnClickListener(v -> showSessionList());
+            }
+            rowA.addView(b, new LinearLayout.LayoutParams(
+                    0, dp(32), 1f));
         }
-        keyBar.addView(keyScroll, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
+        keyBar.addView(rowA, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(32)));
 
-        // --------------------------------------------------------
+        LinearLayout rowB = new LinearLayout(this);
+        rowB.setOrientation(LinearLayout.HORIZONTAL);
+        rowB.setBaselineAligned(false);
+        String[][] row2 = {
+            {"TAB", "\t"}, {"CTRL", ""}, {"ALT", ""},
+            {"\u2190", "\u001b[D"}, {"\u2193", "\u001b[B"},
+            {"\u2192", "\u001b[C"}, {"\u2328", ""}
+        };
+        for (String[] k : row2) {
+            Button b = makeKey(k[0], k[1]);
+            if ("\u2328".equals(k[0])) {
+                b.setOnClickListener(v -> hideKeyboard());
+            }
+            rowB.addView(b, new LinearLayout.LayoutParams(
+                    0, dp(32), 1f));
+        }
+        keyBar.addView(rowB, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(32)));
+
         // ASSEMBLE
         // --------------------------------------------------------
 
@@ -706,13 +825,17 @@ public class MainActivity extends Activity {
         kbdFab.setMinWidth(0);
         kbdFab.setFocusable(false);
         kbdFab.setStateListAnimator(null);
-        android.graphics.drawable.GradientDrawable fabBg =
-                new android.graphics.drawable.GradientDrawable();
-        fabBg.setShape(android.graphics.drawable.GradientDrawable.OVAL);
-        fabBg.setColor(Color.argb(150, 40, 40, 40));
-        fabBg.setStroke(dp(1), CYAN_COLOR);
-        kbdFab.setBackground(fabBg);
-        kbdFab.setOnClickListener(v -> showKeyboard());
+        // Ikon keyboard transparan, tanpa lingkaran/background.
+        kbdFab.setBackgroundColor(Color.TRANSPARENT);
+        if (android.os.Build.VERSION.SDK_INT >= 21) {
+            kbdFab.setBackgroundTintList(
+                    android.content.res.ColorStateList.valueOf(Color.TRANSPARENT));
+            kbdFab.setElevation(0f);
+        }
+        kbdFab.setOnClickListener(v -> {
+            if (keyboardVisible) hideKeyboard();
+            else showKeyboard();
+        });
         android.widget.FrameLayout.LayoutParams fabLp =
                 new android.widget.FrameLayout.LayoutParams(dp(34), dp(34),
                         Gravity.BOTTOM | Gravity.END);
@@ -757,6 +880,7 @@ public class MainActivity extends Activity {
         // memakai seluruh layar.
         frame.setOnApplyWindowInsetsListener((v, insets) -> {
             boolean kbd = insets.getSystemWindowInsetBottom() > 100;
+            keyboardVisible = kbd;
             int vis = kbd ? View.VISIBLE : View.GONE;
             if (hiddenInput != null) hiddenInput.setVisibility(vis);
             if (keyBar != null) keyBar.setVisibility(vis);
@@ -1419,45 +1543,171 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** Daftar semua sesi: ketuk = pindah, tekan lama = tutup. */
+    /** Daftar sesi terminal: tap kanggo pindhah, long-press kanggo nutup. */
     private void showSessionList() {
         final List<Sess> snap = new ArrayList<>(sessions);
-        String[] items = new String[snap.size()];
-        for (int i = 0; i < snap.size(); i++) {
-            Sess sc = snap.get(i);
-            String st = sc.exited ? "exited" : (sc.ready ? "running" : "starting");
-            String pv = sessionPreview(sc);
-            items[i] = (sc == active ? "\u25B6 " : "   ")
-                    + "Session " + sc.id + " \u00B7 " + st
-                    + (pv.isEmpty() ? "" : "\n     " + pv);
+        final android.app.AlertDialog[] holder =
+                new android.app.AlertDialog[1];
+
+        final int bgPanel = Color.rgb(18, 18, 18);
+        final int bgRow = Color.rgb(24, 24, 24);
+        final int fgDim = Color.rgb(140, 140, 140);
+
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setBackgroundColor(bgPanel);
+
+        TextView title = new TextView(this);
+        title.setText("Sessions");
+        title.setTextColor(CYAN_COLOR);
+        title.setTextSize(14);
+        title.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        title.setPadding(dp(16), dp(14), dp(16), dp(2));
+        panel.addView(title);
+
+        TextView hint = new TextView(this);
+        hint.setText(snap.size() + (snap.size() == 1
+                ? " session" : " sessions")
+                + "  ·  tap to switch  ·  hold to close");
+        hint.setTextColor(fgDim);
+        hint.setTextSize(9);
+        hint.setTypeface(Typeface.MONOSPACE);
+        hint.setPadding(dp(16), 0, dp(16), dp(10));
+        panel.addView(hint);
+
+        if (snap.isEmpty()) {
+            TextView empty = new TextView(this);
+            empty.setText("No sessions");
+            empty.setTextColor(fgDim);
+            empty.setTextSize(11);
+            empty.setTypeface(Typeface.MONOSPACE);
+            empty.setPadding(dp(16), dp(14), dp(16), dp(18));
+            panel.addView(empty);
         }
-        android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(
-                this, android.R.style.Theme_Material_Dialog_Alert)
-                .setTitle("Terminal sessions (long-press = close)")
-                .setItems(items, (d, which) -> {
-                    if (which >= 0 && which < snap.size()
-                            && sessions.contains(snap.get(which))) {
-                        activate(snap.get(which));
-                    }
-                })
-                .setPositiveButton("+ New session", (d, w) -> newSession())
-                .setNegativeButton("Close", null)
-                .create();
-        dlg.show();
-        dlg.getListView().setOnItemLongClickListener((parent, v, pos, id) -> {
-            if (pos >= 0 && pos < snap.size()) {
-                final Sess target = snap.get(pos);
-                dlg.dismiss();
-                new android.app.AlertDialog.Builder(this,
-                        android.R.style.Theme_Material_Dialog_Alert)
+
+        for (Sess sc : snap) {
+            final Sess target = sc;
+            final boolean isActive = sc == active;
+
+            String status = sc.exited ? "exited"
+                    : (sc.ready ? "running" : "starting");
+            String preview = sessionPreview(sc);
+
+            LinearLayout item = new LinearLayout(this);
+            item.setOrientation(LinearLayout.VERTICAL);
+            item.setPadding(dp(16), dp(9), dp(16), dp(9));
+
+            android.graphics.drawable.GradientDrawable rowBg =
+                    new android.graphics.drawable.GradientDrawable();
+            rowBg.setColor(isActive ? Color.rgb(40, 44, 26) : bgRow);
+            item.setBackground(rowBg);
+
+            TextView name = new TextView(this);
+            name.setText((isActive ? "\u25b6 " : "  ")
+                    + "Session " + sc.id);
+            name.setTextColor(isActive ? CYAN_COLOR : Color.WHITE);
+            name.setTextSize(12);
+            name.setTypeface(Typeface.MONOSPACE,
+                    isActive ? Typeface.BOLD : Typeface.NORMAL);
+            item.addView(name);
+
+            TextView detail = new TextView(this);
+            detail.setText(status + (preview.isEmpty() ? "" : "   " + preview));
+            detail.setTextColor(fgDim);
+            detail.setTextSize(9);
+            detail.setTypeface(Typeface.MONOSPACE);
+            detail.setSingleLine(true);
+            detail.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            item.addView(detail);
+
+            item.setOnClickListener(v -> {
+                if (holder[0] != null) holder[0].dismiss();
+                if (sessions.contains(target)) activate(target);
+            });
+
+            item.setOnLongClickListener(v -> {
+                if (holder[0] != null) holder[0].dismiss();
+                new android.app.AlertDialog.Builder(
+                        this, 0x1030226)
                         .setMessage("Close session " + target.id + "?")
                         .setPositiveButton("Close",
-                                (d2, w2) -> closeSession(target))
+                                (d, which) -> closeSession(target))
                         .setNegativeButton("Cancel", null)
                         .show();
-            }
-            return true;
+                return true;
+            });
+
+            panel.addView(item);
+
+            View separator = new View(this);
+            separator.setBackgroundColor(Color.rgb(38, 38, 38));
+            panel.addView(separator, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, dp(1)));
+        }
+
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        actions.setGravity(Gravity.CENTER_VERTICAL);
+        actions.setPadding(dp(8), dp(6), dp(8), dp(6));
+        actions.setBackgroundColor(bgPanel);
+        panel.addView(actions);
+
+        addSessionAction(actions, "+ New", () -> {
+            if (holder[0] != null) holder[0].dismiss();
+            newSession();
         });
+        addSessionAction(actions, "Copy log", () -> {
+            if (holder[0] != null) holder[0].dismiss();
+            copyAllLog();
+        });
+        addSessionAction(actions, "Paste", () -> {
+            if (holder[0] != null) holder[0].dismiss();
+            pasteFromClipboard();
+        });
+        addSessionAction(actions, "Close", () -> {
+            if (holder[0] != null) holder[0].dismiss();
+        });
+
+        holder[0] = new android.app.AlertDialog.Builder(
+                this, 0x1030226)
+                .setView(panel)
+                .create();
+        holder[0].show();
+
+        if (holder[0].getWindow() != null) {
+            holder[0].getWindow().setBackgroundDrawable(
+                    new android.graphics.drawable.ColorDrawable(bgPanel));
+        }
+    }
+
+    /** Tombol aksi panel sesi, gaya monospace cyan kaya referensi. */
+    private void addSessionAction(
+            LinearLayout row, String label, Runnable action) {
+        Button b = new Button(this);
+        b.setText(label);
+        b.setTextSize(11);
+        b.setTextColor(CYAN_COLOR);
+        b.setAllCaps(false);
+        b.setIncludeFontPadding(false);
+        b.setMinHeight(0);
+        b.setMinWidth(0);
+        b.setPadding(dp(10), dp(6), dp(10), dp(6));
+        b.setTypeface(Typeface.MONOSPACE);
+        b.setFocusable(false);
+
+        android.graphics.drawable.StateListDrawable bg =
+                new android.graphics.drawable.StateListDrawable();
+        bg.addState(new int[]{android.R.attr.state_pressed},
+                new android.graphics.drawable.ColorDrawable(
+                        Color.rgb(40, 40, 40)));
+        bg.addState(new int[0],
+                new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
+        b.setBackground(bg);
+        b.setStateListAnimator(null);
+        b.setOnClickListener(v -> action.run());
+
+        row.addView(b, new LinearLayout.LayoutParams(
+                0, dp(36), 1f));
     }
 
     // ============================================================
@@ -1805,6 +2055,15 @@ public class MainActivity extends Activity {
         if (d != null && d.getItemCount() > 0) {
             CharSequence t = d.getItemAt(0).coerceToText(this);
             if (t != null) shellWrite(t.toString());
+        }
+    }
+
+    private void hideKeyboard() {
+        if (hiddenInput == null) return;
+        InputMethodManager imm = (InputMethodManager)
+                getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (imm != null && hiddenInput.getWindowToken() != null) {
+            imm.hideSoftInputFromWindow(hiddenInput.getWindowToken(), 0);
         }
     }
 
@@ -2654,6 +2913,10 @@ public class MainActivity extends Activity {
                 prootFile.getAbsolutePath()
         );
 
+        // Proses tamu ikut mati saat proot berhenti (sesi ditutup / Exit);
+        // tanpa ini proses seperti server node bisa menjadi yatim dan menahan port.
+        command.add("--kill-on-exit");
+
         command.add(
                 "-0"
         );
@@ -2699,6 +2962,18 @@ public class MainActivity extends Activity {
                 homeDir.getAbsolutePath() +
                 ":/root"
         );
+
+        // BIND /sdcard -> penyimpanan bersama (butuh izin storage; targetSdk 28
+        // = legacy storage, jadi izin runtime WRITE_EXTERNAL_STORAGE cukup).
+        File shared = new File("/storage/emulated/0");
+        if (shared.isDirectory()) {
+            if (shared.canRead()) {
+                command.add("-b");
+                command.add(shared.getAbsolutePath() + ":/sdcard");
+            } else {
+                appendOutput("\u001b[1;33m[!] /sdcard tidak di-bind: izin penyimpanan belum aktif.\u001b[0m\n");
+            }
+        }
 
         command.add(
                 "--link2symlink"
