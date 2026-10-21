@@ -456,7 +456,7 @@ public class MainActivity extends Activity {
         String ver = appVersion();
 
         if (cols < 26) { // layar sangat sempit: tanpa logo
-            appendOutput("\u001b[1;38;5;45mPAYNUX \u001b[90mv" + ver + "\n\n");
+            appendOutput("\u001b[1;38;5;45mPAYNUX \u001b[90mv" + ver + "\n");
             return;
         }
 
@@ -470,7 +470,6 @@ public class MainActivity extends Activity {
         };
         int[] shade = {51, 45, 39, 33, 99, 135}; // cyan -> biru -> ungu
 
-        appendOutput("\n");
         for (int row = 0; row < art.length; row++) {
             String line = art[row];
             StringBuilder sb = new StringBuilder("  ");
@@ -503,7 +502,7 @@ public class MainActivity extends Activity {
         appendOutput("  " + dot + "\u001b[97mAndroid "
                 + android.os.Build.VERSION.RELEASE + "\u001b[0m"
                 + " \u001b[90m\u00B7 v" + ver + "\u001b[0m\n");
-        appendOutput("  \u001b[38;5;240mpinch = zoom \u00B7 hold a session = close\u001b[0m\n\n");
+        appendOutput("  \u001b[38;5;240mpinch = zoom \u00B7 hold a session = close\u001b[0m\n");
     }
 
     private volatile boolean actionModeActive = false;
