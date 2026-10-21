@@ -99,6 +99,10 @@ public class MainActivity extends Activity {
     private int fontSizeSp = 14;
     private boolean userAtBottom = true;
     private boolean altScreenShown = false;   // riwayat disembunyikan saat alt-screen
+    private android.widget.FrameLayout drawer;   // panel sesi geser dari kiri
+    private View drawerScrim;
+    private boolean drawerOpen = false;
+    private static final int DRAWER_W_DP = 300;
     private static long lastBellAt = 0;       // throttle getaran BEL
 
     /** BEL dari shell -> getar singkat (throttle 400 ms). */
@@ -769,13 +773,14 @@ public class MainActivity extends Activity {
 
         // Bungkus dengan FrameLayout agar tombol keyboard bisa melayang
         // di atas terminal (muncul hanya saat keyboard tertutup).
-        android.widget.FrameLayout frame = new android.widget.FrameLayout(this);
+        DrawerFrame frame = new DrawerFrame(this);
         frame.setBackgroundColor(BG);
         frame.addView(root, new android.widget.FrameLayout.LayoutParams(
                 android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
                 android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
 
 
+        setupDrawer(frame);
         setContentView(frame);
 
         // jepit dua jari = ubah ukuran font (pengganti tombol A-/A+)
@@ -1023,6 +1028,130 @@ public class MainActivity extends Activity {
         }
     }
 
+    // ============================================================
+    // DRAWER SESI (geser dari tepi kiri, ala Termux)
+    // ============================================================
+
+    private void setupDrawer(android.widget.FrameLayout host) {
+        drawerScrim = new View(this);
+        drawerScrim.setBackgroundColor(0x99000000);
+        drawerScrim.setVisibility(View.GONE);
+        drawerScrim.setOnClickListener(v -> closeDrawer());
+        host.addView(drawerScrim, new android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
+
+        drawer = new android.widget.FrameLayout(this);
+        drawer.setBackgroundColor(Color.rgb(18, 18, 18));
+        drawer.setElevation(dp(8));
+        android.widget.FrameLayout.LayoutParams lp = new android.widget.FrameLayout.LayoutParams(
+                dp(DRAWER_W_DP), android.widget.FrameLayout.LayoutParams.MATCH_PARENT);
+        drawer.setTranslationX(-dp(DRAWER_W_DP));
+        drawer.setVisibility(View.GONE);
+        host.addView(drawer, lp);
+    }
+
+    /** Isi drawer dibangun ulang setiap kali dibuka (daftar sesi terbaru). */
+    private void fillDrawer() {
+        if (drawer == null) return;
+        drawer.removeAllViews();
+        android.widget.ScrollView sv = new android.widget.ScrollView(this);
+        sv.addView(buildSessionPanel(this::closeDrawer));
+        drawer.addView(sv, new android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
+    }
+
+    private void openDrawer() {
+        if (drawer == null) return;
+        fillDrawer();          // selalu segar: isi sesi bisa berubah
+        drawerOpen = true;
+        drawer.setVisibility(View.VISIBLE);
+        drawerScrim.setVisibility(View.VISIBLE);
+        drawer.animate().translationX(0f).setDuration(180).start();
+        drawerScrim.animate().alpha(1f).setDuration(180).start();
+    }
+
+    private void closeDrawer() {
+        if (drawer == null) return;
+        drawerOpen = false;
+        drawer.animate().translationX(-dp(DRAWER_W_DP)).setDuration(160)
+                .withEndAction(() -> {
+                    if (!drawerOpen && drawer != null) drawer.setVisibility(View.GONE);
+                }).start();
+        drawerScrim.animate().alpha(0f).setDuration(160)
+                .withEndAction(() -> {
+                    if (!drawerOpen && drawerScrim != null) drawerScrim.setVisibility(View.GONE);
+                }).start();
+    }
+
+    /** Geser drawer mengikuti jari: 0 = terbuka, -lebar = tertutup. */
+    private void dragDrawer(float dx) {
+        if (drawer == null) return;
+        int w = dp(DRAWER_W_DP);
+        float tx = Math.max(-w, Math.min(0f, -w + dx));
+        if (drawer.getChildCount() == 0) fillDrawer();
+        drawer.setVisibility(View.VISIBLE);
+        drawer.setTranslationX(tx);
+        drawerScrim.setVisibility(View.VISIBLE);
+        drawerScrim.setAlpha((tx + w) / (float) w);
+    }
+
+    /**
+     * Tepi kiri layar = pembuka drawer. Gestur hanya direbut bila jari mulai
+     * di 20dp pertama dan arahnya horizontal, jadi ketukan/geser di terminal
+     * tidak terpengaruh.
+     */
+    private class DrawerFrame extends android.widget.FrameLayout {
+        private float downX, downY;
+        private boolean edge;
+
+        DrawerFrame(android.content.Context c) { super(c); }
+
+        @Override
+        public boolean dispatchTouchEvent(android.view.MotionEvent ev) {
+            switch (ev.getActionMasked()) {
+                case android.view.MotionEvent.ACTION_DOWN: {
+                    float x = ev.getX();
+                    edge = drawerOpen ? x <= dp(DRAWER_W_DP) : x <= dp(20);
+                    downX = x;
+                    downY = ev.getY();
+                    break;
+                }
+                case android.view.MotionEvent.ACTION_MOVE: {
+                    if (!edge) break;
+                    float dx = ev.getX() - downX;
+                    float dy = ev.getY() - downY;
+                    if (!drawerOpen && dx > dp(10) && Math.abs(dx) > Math.abs(dy)) {
+                        dragDrawer(dx);
+                        return true;
+                    }
+                    if (drawerOpen && dx < -dp(10) && Math.abs(dx) > Math.abs(dy)) {
+                        dragDrawer(-dp(DRAWER_W_DP) + dx);
+                        return true;
+                    }
+                    break;
+                }
+                case android.view.MotionEvent.ACTION_UP:
+                case android.view.MotionEvent.ACTION_CANCEL: {
+                    if (!edge) break;
+                    float dx = ev.getX() - downX;
+                    edge = false;
+                    if (drawerOpen) {
+                        if (dx < -dp(70)) closeDrawer(); else openDrawer();
+                    } else if (dx > dp(90)) {
+                        openDrawer();
+                    } else if (drawer != null && drawer.getVisibility() == View.VISIBLE) {
+                        closeDrawer();
+                    }
+                    if (Math.abs(dx) > dp(10)) return true;
+                    break;
+                }
+            }
+            return super.dispatchTouchEvent(ev);
+        }
+    }
+
     private void addToolbarKey(LinearLayout row, String label, String seq,
                                final Runnable second) {
         Button btn = makeKey(label, seq);
@@ -1224,7 +1353,7 @@ public class MainActivity extends Activity {
                     newSession();
                     break;
                 case "SESS":
-                    showSessionList();
+                    openDrawer();
                     break;
                 case "COPY":
                     copyAllLog();
