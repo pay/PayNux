@@ -477,7 +477,7 @@ public class MainActivity extends Activity {
         String ver = appVersion();
 
         if (cols < 26) { // layar sangat sempit: tanpa logo
-            appendOutput("\u001b[1;38;5;45mPAYNUX \u001b[90mv" + ver + "\n");
+            appendOutput("\u001b[1;97mPAY\u001b[1;38;2;220;38;38mNUX \u001b[0;90mv" + ver + "\n");
             return;
         }
 
@@ -489,7 +489,7 @@ public class MainActivity extends Activity {
             "\u2588\u2580\u2580\u2591\u2588\u2580\u2588\u2591\u2591\u2588\u2591\u2591\u2588\u2591\u2588\u2591\u2588\u2591\u2588\u2591\u2584\u2580\u2584",
             "\u2580\u2591\u2591\u2591\u2580\u2591\u2580\u2591\u2591\u2580\u2591\u2591\u2580\u2591\u2580\u2591\u2580\u2580\u2580\u2591\u2580\u2591\u2580"
         };
-        int[] shade = {51, 45, 39, 33, 99, 135}; // cyan -> biru -> ungu
+        int[] shade = {196, 160, 124, 88, 240, 236}; // merah -> gelap
 
         for (int row = 0; row < art.length; row++) {
             String line = art[row];
@@ -499,9 +499,9 @@ public class MainActivity extends Activity {
                 if (ch == '\u2591') {
                     sb.append("\u001b[38;5;238m").append(ch);
                 } else {
-                    int sh = shade[Math.min(shade.length - 1,
-                            i * shade.length / Math.max(1, line.length()))];
-                    sb.append("\u001b[1;38;5;").append(sh).append('m').append(ch);
+                    // PAY putih (kolom 0-10), NUX merah (kolom 12-22)
+                    if (i < 12) sb.append("\u001b[1;38;2;255;255;255m").append(ch);
+                    else sb.append("\u001b[1;38;2;220;38;38m").append(ch);
                 }
             }
             sb.append("\u001b[0m\n");
@@ -517,13 +517,13 @@ public class MainActivity extends Activity {
         sep.append("\u001b[0m\n");
         appendOutput(sep.toString());
 
-        String dot = "\u001b[38;5;45m\u2022\u001b[0m ";
+        String dot = "\u001b[38;2;220;38;38m\u2022\u001b[0m ";
         appendOutput("  " + dot + "\u001b[97mUbuntu 24.04\u001b[0m"
                 + " \u001b[90m\u00B7 ARM64 \u00B7 PRoot\u001b[0m\n");
         appendOutput("  " + dot + "\u001b[97mAndroid "
                 + android.os.Build.VERSION.RELEASE + "\u001b[0m"
                 + " \u001b[90m\u00B7 v" + ver + "\u001b[0m\n");
-        appendOutput("  \u001b[38;5;240mPayNux \u00B7 Linux in your pocket\u001b[0m\n");
+        appendOutput("  \u001b[38;2;161;161;170mPayNux \u00B7 Linux On Your Pocket\u001b[0m\n");
     }
 
     private volatile boolean actionModeActive = false;
@@ -635,9 +635,9 @@ public class MainActivity extends Activity {
         // COLORS (Termux palette)
         // --------------------------------------------------------
 
-        int BG       = Color.BLACK;
+        int BG       = Color.rgb(  11,  15,  20); // #0B0F14
         int BG2      = Color.rgb(  18,  18,  18);
-        int BG3      = Color.rgb(  28,  28,  28);
+        int BG3      = Color.rgb(  17,  22,  29);
         int GREEN    = Color.rgb(  87, 201, 120);
         int YELLOW   = Color.rgb( 229, 192,  82);
         int CYAN     = Color.rgb(  51, 187, 200);
@@ -788,6 +788,65 @@ public class MainActivity extends Activity {
         // ASSEMBLE
         // --------------------------------------------------------
 
+        // --------------------------------------------------------
+        // HEADER (48dp): logo, judul PayNux, tagline. Lonceng dan menu
+        // titik tiga masih dekoratif (belum berfungsi).
+        // --------------------------------------------------------
+
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setBackgroundColor(Color.rgb(13, 17, 23));
+        header.setPadding(dp(12), 0, dp(4), 0);
+
+        android.widget.ImageView logo = new android.widget.ImageView(this);
+        logo.setImageResource(R.drawable.ic_logo_header);
+        header.addView(logo, new LinearLayout.LayoutParams(dp(30), dp(30)));
+
+        LinearLayout titleBox = new LinearLayout(this);
+        titleBox.setOrientation(LinearLayout.VERTICAL);
+        titleBox.setGravity(Gravity.CENTER_VERTICAL);
+        titleBox.setPadding(dp(10), 0, 0, 0);
+
+        TextView title = new TextView(this);
+        SpannableString titleText = new SpannableString("PayNux");
+        titleText.setSpan(new ForegroundColorSpan(Color.WHITE), 0, 3,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        titleText.setSpan(new ForegroundColorSpan(ACCENT_RED), 3, 6,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        title.setText(titleText);
+        title.setTextSize(17);
+        title.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        title.setIncludeFontPadding(false);
+        titleBox.addView(title, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        TextView tagline = new TextView(this);
+        tagline.setText("Linux On Your Pocket");
+        tagline.setTextColor(Color.rgb(161, 161, 170));
+        tagline.setTextSize(10);
+        tagline.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+        tagline.setIncludeFontPadding(false);
+        titleBox.addView(tagline, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        header.addView(titleBox, new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        header.addView(headerIcon(R.drawable.ic_bell),
+                new LinearLayout.LayoutParams(dp(44), dp(44)));
+        header.addView(headerIcon(R.drawable.ic_more_vert),
+                new LinearLayout.LayoutParams(dp(44), dp(44)));
+
+        View headerLine = new View(this);
+        headerLine.setBackgroundColor(Color.rgb(31, 37, 45));
+
+        root.addView(header, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(48)));
+        root.addView(headerLine, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 1));
+
         root.addView(terminalScroll, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1));
         root.addView(hiddenInput, new LinearLayout.LayoutParams(
@@ -923,6 +982,15 @@ public class MainActivity extends Activity {
 
     private int dp(int v) {
         return (int) (v * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
+    /** Ikon 44dp untuk header (dekoratif untuk sekarang). */
+    private android.widget.ImageView headerIcon(int resId) {
+        android.widget.ImageView iv = new android.widget.ImageView(this);
+        iv.setImageResource(resId);
+        iv.setScaleType(android.widget.ImageView.ScaleType.CENTER_INSIDE);
+        iv.setPadding(dp(10), dp(10), dp(10), dp(10));
+        return iv;
     }
 
     private final android.os.Handler repeatHandler =
@@ -1076,8 +1144,8 @@ public class MainActivity extends Activity {
         drawer.setBackgroundColor(Color.rgb(18, 18, 18));
         drawer.setElevation(dp(8));
         android.widget.FrameLayout.LayoutParams lp = new android.widget.FrameLayout.LayoutParams(
-                dp(DRAWER_W_DP), android.widget.FrameLayout.LayoutParams.MATCH_PARENT);
-        drawer.setTranslationX(-dp(DRAWER_W_DP));
+                drawerWidthPx(), android.widget.FrameLayout.LayoutParams.MATCH_PARENT);
+        drawer.setTranslationX(-drawerWidthPx());
         drawer.setVisibility(View.GONE);
         host.addView(drawer, lp);
     }
@@ -1086,15 +1154,45 @@ public class MainActivity extends Activity {
     private void fillDrawer() {
         if (drawer == null) return;
         drawer.removeAllViews();
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
         android.widget.ScrollView sv = new android.widget.ScrollView(this);
-        sv.addView(buildSessionPanel(this::closeDrawer));
-        drawer.addView(sv, new android.widget.FrameLayout.LayoutParams(
+        sv.addView(buildSessionPanel(this::closeDrawer, false));
+        box.addView(sv, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
+        View actLine = new View(this);
+        actLine.setBackgroundColor(Color.rgb(38, 38, 38));
+        box.addView(actLine, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 1));
+        box.addView(buildSessionActions(this::closeDrawer),
+                new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT));
+        drawer.addView(box, new android.widget.FrameLayout.LayoutParams(
                 android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
                 android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
     }
 
+    /** Lebar drawer: maks 280dp, tapi tidak lebih dari 78% lebar layar. */
+    private int drawerWidthPx() {
+        int screen = getResources().getDisplayMetrics().widthPixels;
+        return Math.min(dp(280), (int) (screen * 0.78f));
+    }
+
+    /** Samakan lebar drawer dengan layar saat ini (mis. setelah rotasi). */
+    private void syncDrawerWidth() {
+        if (drawer == null) return;
+        android.view.ViewGroup.LayoutParams lp = drawer.getLayoutParams();
+        int w = drawerWidthPx();
+        if (lp != null && lp.width != w) {
+            lp.width = w;
+            drawer.setLayoutParams(lp);
+        }
+    }
+
     private void openDrawer() {
         if (drawer == null) return;
+        syncDrawerWidth();
         boolean wasHidden = !drawerOpen || drawer.getVisibility() != View.VISIBLE;
         if (wasHidden) fillDrawer();   // segar saat dibuka; jangan saat sudah terbuka
         drawerOpen = true;
@@ -1107,7 +1205,7 @@ public class MainActivity extends Activity {
     private void closeDrawer() {
         if (drawer == null) return;
         drawerOpen = false;
-        drawer.animate().translationX(-dp(DRAWER_W_DP)).setDuration(160)
+        drawer.animate().translationX(-drawerWidthPx()).setDuration(160)
                 .withEndAction(() -> {
                     if (!drawerOpen && drawer != null) drawer.setVisibility(View.GONE);
                 }).start();
@@ -1120,7 +1218,8 @@ public class MainActivity extends Activity {
     /** Geser drawer mengikuti jari: 0 = terbuka, -lebar = tertutup. */
     private void dragDrawer(float dx) {
         if (drawer == null) return;
-        int w = dp(DRAWER_W_DP);
+        syncDrawerWidth();
+        int w = drawerWidthPx();
         float tx = Math.max(-w, Math.min(0f, -w + dx));
         if (drawer.getChildCount() == 0) fillDrawer();
         drawer.setVisibility(View.VISIBLE);
@@ -1137,15 +1236,53 @@ public class MainActivity extends Activity {
     private class DrawerFrame extends android.widget.FrameLayout {
         private float downX, downY;
         private boolean edge;
+        // ketuk pendek di area terminal -> tampilkan keyboard
+        private float tapX, tapY;
+        private long tapT;
+        private boolean tapCand;
 
         DrawerFrame(android.content.Context c) { super(c); }
 
+        private boolean isInsideTerminal(float rx, float ry) {
+            int[] loc = new int[2];
+            terminalScroll.getLocationOnScreen(loc);
+            return rx >= loc[0] && rx < loc[0] + terminalScroll.getWidth()
+                    && ry >= loc[1] && ry < loc[1] + terminalScroll.getHeight();
+        }
+
         @Override
         public boolean dispatchTouchEvent(android.view.MotionEvent ev) {
+            // Ketuk pendek di area terminal = tampilkan keyboard. Event tidak
+            // ditelan, jadi seleksi teks (tekan lama) dan scroll tetap jalan.
+            switch (ev.getActionMasked()) {
+                case android.view.MotionEvent.ACTION_DOWN:
+                    tapCand = ev.getPointerCount() == 1 && !drawerOpen
+                            && !actionModeActive && terminalScroll != null
+                            && isInsideTerminal(ev.getRawX(), ev.getRawY());
+                    tapX = ev.getRawX();
+                    tapY = ev.getRawY();
+                    tapT = ev.getEventTime();
+                    break;
+                case android.view.MotionEvent.ACTION_POINTER_DOWN:
+                case android.view.MotionEvent.ACTION_CANCEL:
+                    tapCand = false;
+                    break;
+                case android.view.MotionEvent.ACTION_UP:
+                    if (tapCand && ev.getEventTime() - tapT < 250
+                            && Math.abs(ev.getRawX() - tapX) < dp(10)
+                            && Math.abs(ev.getRawY() - tapY) < dp(10)
+                            && !(emulator != null && emulator.isMouseTracking())) {
+                        showKeyboard();
+                    }
+                    tapCand = false;
+                    break;
+                default:
+                    break;
+            }
             switch (ev.getActionMasked()) {
                 case android.view.MotionEvent.ACTION_DOWN: {
                     float x = ev.getX();
-                    edge = drawerOpen ? x <= dp(DRAWER_W_DP) : x <= dp(20);
+                    edge = drawerOpen ? x <= drawerWidthPx() : x <= dp(20);
                     downX = x;
                     downY = ev.getY();
                     break;
@@ -1159,7 +1296,7 @@ public class MainActivity extends Activity {
                         return true;
                     }
                     if (drawerOpen && dx < -dp(10) && Math.abs(dx) > Math.abs(dy)) {
-                        dragDrawer(-dp(DRAWER_W_DP) + dx);
+                        dragDrawer(-drawerWidthPx() + dx);
                         return true;
                     }
                     break;
@@ -1464,6 +1601,8 @@ public class MainActivity extends Activity {
     // ============================================================
 
     private static final int CYAN_COLOR   = Color.rgb(51, 187, 200);
+    /** Merah aksen #DC2626: hanya untuk header/banner. */
+    private static final int ACCENT_RED   = Color.rgb(220, 38, 38);
     private static final int YELLOW_COLOR = Color.rgb(229, 192, 82);
 
     private Button ctrlKeyBtn;
@@ -2001,6 +2140,11 @@ public class MainActivity extends Activity {
      * @param onDismiss dijalankan sebelum aksi apa pun (tutup dialog/drawer)
      */
     private LinearLayout buildSessionPanel(final Runnable onDismiss) {
+        return buildSessionPanel(onDismiss, true);
+    }
+
+    private LinearLayout buildSessionPanel(final Runnable onDismiss,
+                                           boolean withActions) {
         final List<Sess> snap = new ArrayList<>(sessions);
         final int n = snap.size();
 
@@ -2096,25 +2240,27 @@ public class MainActivity extends Activity {
                     LinearLayout.LayoutParams.MATCH_PARENT, 1));
         }
 
-        // ---- baris aksi ----
+        // ---- baris aksi (di drawer dipasang terpisah di bawah) ----
+        if (withActions) panel.addView(buildSessionActions(onDismiss));
+
+        return panel;
+    }
+
+    /** Baris aksi panel sesi: New, Reset, Close. */
+    private LinearLayout buildSessionActions(final Runnable onDismiss) {
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
         actions.setGravity(Gravity.CENTER_VERTICAL);
         actions.setPadding(dp(8), dp(6), dp(8), dp(6));
-        actions.setBackgroundColor(BG_PANEL);
-        panel.addView(actions);
+        actions.setBackgroundColor(Color.rgb(18, 18, 18));
 
-        addSessionAction(actions, "+ New",
+        addSessionAction(actions, "New",
                 () -> { onDismiss.run(); newSession(); });
-        addSessionAction(actions, "Copy log",
-                () -> { onDismiss.run(); copyAllLog(); });
-        addSessionAction(actions, "Paste",
-                () -> { onDismiss.run(); pasteFromClipboard(); });
         addSessionAction(actions, "Reset",
                 () -> { onDismiss.run(); resetTerminal(); });
         addSessionAction(actions, "Close", onDismiss);
 
-        return panel;
+        return actions;
     }
 
     /** Tombol aksi kecil di panel sesi (warna tetap cyan). */
