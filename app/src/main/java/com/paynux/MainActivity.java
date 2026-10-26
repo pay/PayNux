@@ -60,6 +60,7 @@ public class MainActivity extends Activity {
         TerminalSession ts;
         volatile boolean ready;
         volatile boolean exited;
+        volatile boolean closing;   // ditutup sengaja (bukan exit tak terduga)
         Sess(int id) { this.id = id; }
     }
 
@@ -148,6 +149,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        appCtx = getApplicationContext();
 
         // Dibuka dari tombol "Exit" notifikasi saat Activity sudah tidak ada
         if (getIntent() != null
@@ -175,6 +177,7 @@ public class MainActivity extends Activity {
 
         buildTerminalUI();
         updateSessionButton();
+        checkVersionChange();
 
         if (fresh) {
             showBanner();
@@ -217,9 +220,11 @@ public class MainActivity extends Activity {
                         prepareRuntime();
 
                         startUbuntu(sessions.get(0));
+                        addNotif("ok", "Terminal ready", "Ubuntu shell started.");
 
                     } catch (Exception e) {
 
+                        addNotif("err", "Setup failed", notifShort(e));
                         appendOutput(
                                 "\n[PAYNUX ERROR]\n" +
                                 e.getClass().getName() +
@@ -343,6 +348,8 @@ public class MainActivity extends Activity {
             appendOutput("\u001b[33m[!] Last run ended: " + name
                     + " (status " + i.getStatus() + ")\u001b[0m\n"
                     + "\u001b[90m    details: /root/paynux-exit.log\u001b[0m\n\n");
+            addNotif("warn", "App stopped unexpectedly",
+                    "Last run ended: " + name + ". Details: /root/paynux-exit.log");
         } catch (Throwable ignored) { }
     }
     private static volatile boolean bootBusy = false;
@@ -835,8 +842,34 @@ public class MainActivity extends Activity {
 
         header.addView(titleBox, new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
-        header.addView(headerIcon(R.drawable.ic_bell),
-                new LinearLayout.LayoutParams(dp(44), dp(44)));
+        android.widget.FrameLayout bellBox = new android.widget.FrameLayout(this);
+        bellBox.addView(headerIcon(R.drawable.ic_bell),
+                new android.widget.FrameLayout.LayoutParams(
+                        android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                        android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
+        bellBadge = new TextView(this);
+        bellBadge.setTextColor(Color.WHITE);
+        bellBadge.setTextSize(9);
+        bellBadge.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        bellBadge.setIncludeFontPadding(false);
+        bellBadge.setGravity(Gravity.CENTER);
+        bellBadge.setMinWidth(dp(16));
+        bellBadge.setPadding(dp(3), 0, dp(3), 0);
+        android.graphics.drawable.GradientDrawable badgeBg =
+                new android.graphics.drawable.GradientDrawable();
+        badgeBg.setColor(ACCENT_RED);
+        badgeBg.setCornerRadius(dp(8));
+        bellBadge.setBackground(badgeBg);
+        bellBadge.setVisibility(View.GONE);
+        android.widget.FrameLayout.LayoutParams badgeLp =
+                new android.widget.FrameLayout.LayoutParams(
+                        android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+                        dp(16), Gravity.TOP | Gravity.END);
+        badgeLp.setMargins(0, dp(4), dp(3), 0);
+        bellBox.addView(bellBadge, badgeLp);
+        bellBox.setOnClickListener(v -> showNotificationCenter());
+        header.addView(bellBox, new LinearLayout.LayoutParams(dp(44), dp(44)));
+        refreshBell();
         android.widget.ImageView moreBtn = headerIcon(R.drawable.ic_more_vert);
         moreBtn.setOnClickListener(v -> showThemeMenu(v));
         header.addView(moreBtn, new LinearLayout.LayoutParams(dp(44), dp(44)));
@@ -989,6 +1022,253 @@ public class MainActivity extends Activity {
     }
 
     // ============================================================
+    // PUSAT NOTIFIKASI (di dalam aplikasi, bukan notifikasi sistem)
+    // Disimpan di SharedPreferences "paynux_notif" sebagai JSON,
+    // maksimal 50 entri. Badge merah di lonceng = jumlah belum dibaca.
+    // ============================================================
+
+    private static android.content.Context appCtx;
+    private static final Object NOTIF_LOCK = new Object();
+    private static final int NOTIF_MAX = 50;
+    private TextView bellBadge;
+
+    private static SharedPreferences notifPrefs() {
+        return appCtx.getSharedPreferences("paynux_notif", Context.MODE_PRIVATE);
+    }
+
+    private static org.json.JSONArray notifLoad() {
+        try {
+            return new org.json.JSONArray(notifPrefs().getString("list", "[]"));
+        } catch (Throwable t) {
+            return new org.json.JSONArray();
+        }
+    }
+
+    private static void notifSave(org.json.JSONArray a) {
+        notifPrefs().edit().putString("list", a.toString()).apply();
+    }
+
+    /** kind: "ok", "info", "warn", "err". Aman dipanggil dari thread mana pun. */
+    static void addNotif(String kind, String title, String message) {
+        if (appCtx == null) return;
+        try {
+            synchronized (NOTIF_LOCK) {
+                org.json.JSONArray old = notifLoad();
+                long now = System.currentTimeMillis();
+                // Pemberitahuan identik yang berulang dalam 10 menit digabung.
+                if (old.length() > 0) {
+                    org.json.JSONObject last = old.optJSONObject(old.length() - 1);
+                    if (last != null
+                            && title.equals(last.optString("h"))
+                            && message.equals(last.optString("m"))
+                            && now - last.optLong("t") < 10 * 60 * 1000L) {
+                        return;
+                    }
+                }
+                org.json.JSONObject o = new org.json.JSONObject();
+                o.put("t", now);
+                o.put("k", kind);
+                o.put("h", title);
+                o.put("m", message);
+                o.put("r", 0);
+                old.put(o);
+                org.json.JSONArray out = new org.json.JSONArray();
+                for (int i = Math.max(0, old.length() - NOTIF_MAX); i < old.length(); i++) {
+                    out.put(old.get(i));
+                }
+                notifSave(out);
+            }
+        } catch (Throwable ignored) { }
+        uiPost(() -> {
+            final MainActivity a = current;
+            if (a != null) a.refreshBell();
+        });
+    }
+
+    private static String notifShort(Throwable e) {
+        String m = e.getMessage();
+        if (m == null || m.isEmpty()) m = e.getClass().getSimpleName();
+        int nl = m.indexOf('\n');
+        if (nl > 0) m = m.substring(0, nl);
+        return m.length() > 160 ? m.substring(0, 160) : m;
+    }
+
+    private static int notifUnread() {
+        synchronized (NOTIF_LOCK) {
+            org.json.JSONArray a = notifLoad();
+            int n = 0;
+            for (int i = 0; i < a.length(); i++) {
+                org.json.JSONObject o = a.optJSONObject(i);
+                if (o != null && o.optInt("r", 0) == 0) n++;
+            }
+            return n;
+        }
+    }
+
+    private static void notifMarkAllRead() {
+        synchronized (NOTIF_LOCK) {
+            try {
+                org.json.JSONArray a = notifLoad();
+                for (int i = 0; i < a.length(); i++) {
+                    org.json.JSONObject o = a.optJSONObject(i);
+                    if (o != null) o.put("r", 1);
+                }
+                notifSave(a);
+            } catch (Throwable ignored) { }
+        }
+    }
+
+    private static void notifClear() {
+        synchronized (NOTIF_LOCK) {
+            notifPrefs().edit().remove("list").apply();
+        }
+    }
+
+    private static String notifAgo(long t) {
+        long d = System.currentTimeMillis() - t;
+        if (d < 60000L) return "just now";
+        if (d < 3600000L) return (d / 60000L) + " min ago";
+        if (d < 86400000L) return (d / 3600000L) + " h ago";
+        return new java.text.SimpleDateFormat("d MMM HH:mm", java.util.Locale.US)
+                .format(new java.util.Date(t));
+    }
+
+    /** Perbarui badge lonceng (UI thread). */
+    private void refreshBell() {
+        if (bellBadge == null) return;
+        int n = notifUnread();
+        if (n <= 0) {
+            bellBadge.setVisibility(View.GONE);
+            return;
+        }
+        bellBadge.setText(n > 9 ? "9+" : String.valueOf(n));
+        bellBadge.setVisibility(View.VISIBLE);
+    }
+
+    /** Catat versi aplikasi; beri tahu bila sudah diperbarui. */
+    private void checkVersionChange() {
+        try {
+            android.content.pm.PackageInfo pi =
+                    getPackageManager().getPackageInfo(getPackageName(), 0);
+            int vc = android.os.Build.VERSION.SDK_INT >= 28
+                    ? (int) pi.getLongVersionCode() : pi.versionCode;
+            String vn = pi.versionName == null ? "?" : pi.versionName;
+            SharedPreferences p = getSharedPreferences("paynux_ui", MODE_PRIVATE);
+            int lastVc = p.getInt("last_version_code", 0);
+            String lastVn = p.getString("last_version_name", "?");
+            if (lastVc != vc) {
+                if (lastVc == 0) {
+                    addNotif("info", "Notifications on",
+                            "Setup, terminal and update events appear here. PayNux v" + vn + ".");
+                } else {
+                    addNotif("ok", "App updated",
+                            "PayNux updated from v" + lastVn + " to v" + vn + ".");
+                }
+                p.edit().putInt("last_version_code", vc)
+                        .putString("last_version_name", vn).apply();
+            }
+        } catch (Throwable ignored) { }
+    }
+
+    private static LinearLayout.LayoutParams wrapLp() {
+        return new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+    }
+
+    private View notifRow(org.json.JSONObject o, boolean unread) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(0, dp(8), 0, dp(8));
+
+        View strip = new View(this);
+        strip.setBackgroundColor(unread ? ACCENT_RED : Color.TRANSPARENT);
+        row.addView(strip, new LinearLayout.LayoutParams(
+                dp(3), LinearLayout.LayoutParams.MATCH_PARENT));
+
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(10), 0, 0, 0);
+
+        String kind = o.optString("k", "info");
+        int dot;
+        if ("ok".equals(kind)) dot = Color.rgb(76, 175, 80);
+        else if ("warn".equals(kind)) dot = Color.rgb(255, 179, 0);
+        else if ("err".equals(kind)) dot = ACCENT_RED;
+        else dot = CYAN_COLOR;
+
+        TextView title = new TextView(this);
+        SpannableString ts = new SpannableString("\u25CF  " + o.optString("h", ""));
+        ts.setSpan(new ForegroundColorSpan(dot), 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        title.setText(ts);
+        title.setTextColor(Color.WHITE);
+        title.setTextSize(14);
+        title.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        box.addView(title, wrapLp());
+
+        TextView msg = new TextView(this);
+        msg.setText(o.optString("m", ""));
+        msg.setTextColor(Color.rgb(161, 161, 170));
+        msg.setTextSize(12);
+        msg.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+        box.addView(msg, wrapLp());
+
+        TextView when = new TextView(this);
+        when.setText(notifAgo(o.optLong("t", 0)));
+        when.setTextColor(Color.rgb(113, 113, 122));
+        when.setTextSize(10);
+        when.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+        box.addView(when, wrapLp());
+
+        row.addView(box, new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        return row;
+    }
+
+    private void showNotificationCenter() {
+        final org.json.JSONArray items;
+        synchronized (NOTIF_LOCK) { items = notifLoad(); }
+
+        LinearLayout list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        list.setPadding(dp(16), dp(4), dp(16), dp(4));
+
+        int shown = 0;
+        for (int i = items.length() - 1; i >= 0; i--) {
+            org.json.JSONObject o = items.optJSONObject(i);
+            if (o == null) continue;
+            list.addView(notifRow(o, o.optInt("r", 0) == 0));
+            shown++;
+        }
+        if (shown == 0) {
+            TextView empty = new TextView(this);
+            empty.setText("No notifications yet.\nSetup, terminal and update events will appear here.");
+            empty.setTextColor(Color.rgb(161, 161, 170));
+            empty.setTextSize(13);
+            empty.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+            empty.setPadding(0, dp(16), 0, dp(16));
+            list.addView(empty, wrapLp());
+        }
+
+        // Dibuka = dianggap terbaca; item baru tetap ditandai garis merah.
+        notifMarkAllRead();
+        refreshBell();
+
+        ScrollView sv = new ScrollView(this);
+        sv.addView(list);
+        new android.app.AlertDialog.Builder(this,
+                android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("Notifications")
+                .setView(sv)
+                .setPositiveButton("Close", null)
+                .setNeutralButton("Clear all", (d, w) -> {
+                    notifClear();
+                    refreshBell();
+                })
+                .show();
+    }
+
+    // ============================================================
     // TEMA WARNA TERMINAL
     // Urutan kolom: latar terminal, latar baris tombol, teks default,
     // latar header, garis header. Berlaku setelah aplikasi dibuka ulang.
@@ -1037,7 +1317,7 @@ public class MainActivity extends Activity {
                 .show();
     }
 
-    /** Ikon 44dp untuk header (dekoratif untuk sekarang). */
+    /** Ikon 44dp untuk header. */
     private android.widget.ImageView headerIcon(int resId) {
         android.widget.ImageView iv = new android.widget.ImageView(this);
         iv.setImageResource(resId);
@@ -1991,6 +2271,15 @@ public class MainActivity extends Activity {
                 final boolean wasReady = sc.ready;
                 sc.ready = false;
                 sc.exited = true;
+                if (wasReady && !sc.closing) {
+                    if (code == 0) {
+                        addNotif("info", "Session ended",
+                                "Shell " + sc.id + " exited normally.");
+                    } else {
+                        addNotif("warn", "Session exited",
+                                "Shell " + sc.id + " exited with code " + code + ".");
+                    }
+                }
                 feedTo(sc.emu, "\n\n[Ubuntu process exited] code=" + code + "\n");
                 if (sessions.size() <= 1) {
                     feedTo(sc.emu, "[Tap the session button, long-press this session, then Close"
@@ -2111,6 +2400,7 @@ public class MainActivity extends Activity {
             return;
         }
         restarting = true;
+        old.closing = true;
         try { if (old.ts != null) old.ts.finish(); } catch (Exception ignored) { }
         old.ready = false;
         final Sess sc = createSess();
@@ -2123,6 +2413,7 @@ public class MainActivity extends Activity {
                 prepareRuntime();
                 startUbuntu(sc);
             } catch (Exception e) {
+                addNotif("err", "Session failed", notifShort(e));
                 feedTo(sc.emu, "\n[PAYNUX ERROR]\n"
                         + e.getClass().getName() + "\n"
                         + String.valueOf(e.getMessage()) + "\n");
@@ -2140,6 +2431,7 @@ public class MainActivity extends Activity {
             return;
         }
         int idx = sessions.indexOf(sc);
+        sc.closing = true;
         try { if (sc.ts != null) sc.ts.finish(); } catch (Exception ignored) { }
         sc.ready = false;
         sessions.remove(sc);
@@ -3480,6 +3772,7 @@ public class MainActivity extends Activity {
         appendOutput(
                 "[+] Ubuntu extraction complete.\n"
         );
+        addNotif("ok", "Ubuntu installed", "Ubuntu 24.04 rootfs extracted and ready.");
 
         // --------------------------------------------------------
         // FIX PERMISSIONS
@@ -4007,6 +4300,7 @@ public class MainActivity extends Activity {
             bootLog("[+] PTY active - interactive shell ready.\n\n");
         } else {
             feedTo(sc.emu, "[!] Pipe mode (no PTY) - limited interaction.\n\n");
+            addNotif("warn", "Limited terminal", "PTY unavailable; running in pipe mode.");
         }
         if (sc == active) scheduleRender();
         runOnUiThread(() -> updateSessionButton());
@@ -4053,6 +4347,7 @@ public class MainActivity extends Activity {
      */
     private static void shutdownAll(final android.content.Context ctx) {
         for (Sess sc : sessions) {
+            sc.closing = true;
             try { if (sc.ts != null) sc.ts.finish(); } catch (Throwable ignored) { }
         }
         sessions.clear();
