@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Lingkaran merah aksen (zona aman adaptive icon: radius 35 dari 108; zona terlihat launcher ±72). -->
+    <path
+        android:fillColor="#DC2626"
+        android:pathData="M54,54m-35,0a35,35 0,1 1,70 0a35,35 0,1 1,-70 0" />
+    <!-- Prompt ">" -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="6.4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M38.8,41.2L51.7,54L38.8,66.8" />
+    <!-- Kursor "_" -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="6.4"
+        android:strokeLineCap="round"
+        android:pathData="M57.5,68L71.5,68" />
+</vector>
