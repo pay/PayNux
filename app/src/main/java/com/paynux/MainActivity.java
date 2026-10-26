@@ -635,13 +635,14 @@ public class MainActivity extends Activity {
         // COLORS (Termux palette)
         // --------------------------------------------------------
 
-        int BG       = Color.rgb(  11,  15,  20); // #0B0F14
+        themeIdx = themeIndex();
+        int BG       = THEMES[themeIdx][0];
         int BG2      = Color.rgb(  18,  18,  18);
-        int BG3      = Color.rgb(  17,  22,  29);
+        int BG3      = THEMES[themeIdx][1];
         int GREEN    = Color.rgb(  87, 201, 120);
         int YELLOW   = Color.rgb( 229, 192,  82);
         int CYAN     = Color.rgb(  51, 187, 200);
-        int FG       = Color.WHITE;
+        int FG       = THEMES[themeIdx][2];
         int GRAY     = Color.rgb( 128, 128, 128);
 
         SharedPreferences prefs =
@@ -796,7 +797,7 @@ public class MainActivity extends Activity {
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setBackgroundColor(Color.rgb(13, 17, 23));
+        header.setBackgroundColor(THEMES[themeIdx][3]);
         header.setPadding(dp(12), 0, dp(4), 0);
 
         android.widget.ImageView logo = new android.widget.ImageView(this);
@@ -836,11 +837,14 @@ public class MainActivity extends Activity {
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
         header.addView(headerIcon(R.drawable.ic_bell),
                 new LinearLayout.LayoutParams(dp(44), dp(44)));
-        header.addView(headerIcon(R.drawable.ic_more_vert),
-                new LinearLayout.LayoutParams(dp(44), dp(44)));
+        android.widget.ImageView moreBtn = headerIcon(R.drawable.ic_more_vert);
+        moreBtn.setOnClickListener(v -> showThemeMenu(v));
+        header.addView(moreBtn, new LinearLayout.LayoutParams(dp(44), dp(44)));
+        getWindow().setStatusBarColor(THEMES[themeIdx][3]);
+        getWindow().setNavigationBarColor(THEMES[themeIdx][0]);
 
         View headerLine = new View(this);
-        headerLine.setBackgroundColor(Color.rgb(31, 37, 45));
+        headerLine.setBackgroundColor(THEMES[themeIdx][4]);
 
         root.addView(header, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(48)));
@@ -982,6 +986,55 @@ public class MainActivity extends Activity {
 
     private int dp(int v) {
         return (int) (v * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
+    // ============================================================
+    // TEMA WARNA TERMINAL
+    // Urutan kolom: latar terminal, latar baris tombol, teks default,
+    // latar header, garis header. Berlaku setelah aplikasi dibuka ulang.
+    // Palet ANSI 16 warna tidak diubah oleh tema.
+    // ============================================================
+
+    private static final String[] THEME_NAMES = {
+            "PayNux", "Dracula", "Solarized Dark", "Gruvbox Dark"};
+    private static final int[][] THEMES = {
+            {0xFF0B0F14, 0xFF11161D, 0xFFFFFFFF, 0xFF0D1117, 0xFF1F252D},
+            {0xFF282A36, 0xFF21222C, 0xFFF8F8F2, 0xFF21222C, 0xFF44475A},
+            {0xFF002B36, 0xFF073642, 0xFF93A1A1, 0xFF073642, 0xFF0F4A58},
+            {0xFF282828, 0xFF1D2021, 0xFFEBDBB2, 0xFF1D2021, 0xFF3C3836},
+    };
+    private int themeIdx = 0;
+
+    private int themeIndex() {
+        int i = getSharedPreferences("paynux_ui", MODE_PRIVATE).getInt("theme", 0);
+        return (i < 0 || i >= THEMES.length) ? 0 : i;
+    }
+
+    private void showThemeMenu(View anchor) {
+        android.widget.PopupMenu pm = new android.widget.PopupMenu(this, anchor);
+        pm.getMenu().add(0, 1, 0, "Theme");
+        pm.setOnMenuItemClickListener(item -> {
+            showThemePicker();
+            return true;
+        });
+        pm.show();
+    }
+
+    private void showThemePicker() {
+        new android.app.AlertDialog.Builder(this,
+                android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("Theme")
+                .setSingleChoiceItems(THEME_NAMES, themeIdx, (d, which) -> {
+                    getSharedPreferences("paynux_ui", MODE_PRIVATE).edit()
+                            .putInt("theme", which).apply();
+                    d.dismiss();
+                    android.widget.Toast.makeText(this,
+                            THEME_NAMES[which] + " theme saved. "
+                                    + "Close the app from recent apps and reopen it.",
+                            android.widget.Toast.LENGTH_LONG).show();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
     }
 
     /** Ikon 44dp untuk header (dekoratif untuk sekarang). */
@@ -1766,10 +1819,10 @@ public class MainActivity extends Activity {
             if ((at & TerminalEmulator.ATTR_REVERSE) != 0) {
                 hasFg = true;
                 fgc = (bg == TerminalEmulator.DEFAULT_COLOR)
-                        ? Color.BLACK : (bg | 0xFF000000);
+                        ? THEMES[themeIdx][0] : (bg | 0xFF000000);
                 hasBg = true;
                 bgc = (fg == TerminalEmulator.DEFAULT_COLOR)
-                        ? Color.WHITE : (fg | 0xFF000000);
+                        ? THEMES[themeIdx][2] : (fg | 0xFF000000);
             } else {
                 hasFg = fg != TerminalEmulator.DEFAULT_COLOR;
                 fgc = fg | 0xFF000000;
