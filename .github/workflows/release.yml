@@ -39,7 +39,7 @@ jobs:
           ./gradlew --no-daemon \
             -Pandroid.aapt2FromMavenOverride="$ANDROID_HOME/build-tools/36.0.0/aapt2" \
             :app:assembleRelease \
-  -x lintVitalRelease
+            -x lintVitalRelease
 
       - name: Sign APK
         env:
