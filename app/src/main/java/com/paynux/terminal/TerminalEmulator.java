@@ -81,6 +81,15 @@ public final class TerminalEmulator {
         void onResponse(String data);
     }
 
+    /** Optional: called when the shell reports that a long command finished (OSC 777 paynux-done). */
+    public interface CommandListener {
+        void onCommandDone(int exit, long seconds, String cmd);
+    }
+
+    private volatile CommandListener commandListener;
+
+    public void setCommandListener(CommandListener l) { commandListener = l; }
+
     private final Listener listener;
     private final CharsetDecoder decoder = StandardCharsets.UTF_8.newDecoder()
             .onMalformedInput(CodingErrorAction.REPLACE)
@@ -116,6 +125,8 @@ public final class TerminalEmulator {
     private final boolean[] paramColon = new boolean[32];
     private int nParams;
     private boolean privateMode;
+    private int csiInter;   // last CSI intermediate byte (0x20-0x2F), 0 if none
+    private boolean bracketedPaste;   // ?2004: the app wants pastes wrapped in ESC[200~ ... ESC[201~
     private boolean mouseTrack = false;      // ?1000 tombol
     private boolean mouseDrag = false;       // ?1002 tombol+drag
     private boolean mouseAny = false;        // ?1003 semua gerakan
@@ -151,6 +162,9 @@ public final class TerminalEmulator {
 
     /** Format laporan mouse SGR (1006) atau X10 biasa? */
     public synchronized boolean isMouseSgr() { return mouseSgr; }
+
+    /** True while the running app has enabled bracketed paste (CSI ? 2004 h). */
+    public synchronized boolean isBracketedPaste() { return bracketedPaste; }
 
     /**
      * Laporan mouse ke aplikasi.
@@ -295,7 +309,7 @@ public final class TerminalEmulator {
                 case ST_OSC:
                     if (c == 0x07) { finishOsc(); state = ST_GROUND; }
                     else if (c == 0x1b) { state = ST_ESC; strKind = 2; } // expect '\\' terminator
-                    else osc.append(c);
+                    else if (osc.length() < 4096) osc.append(c);   // cap: an unterminated OSC must not grow forever
                     break;
                 case ST_STR:
                     if (c == 0x1b) { state = ST_ESC; strKind = 3; }
@@ -327,11 +341,15 @@ public final class TerminalEmulator {
     }
 
     private void handleEsc(char c) {
-        if (strKind == 2) { // OSC or string terminator: ESC \
-            state = (c == '\\') ? ST_GROUND : ST_GROUND;
-            if (strKind == 2) { /* osc handled */ }
+        if (strKind == 2) { // OSC ended by ST (ESC \\), or aborted by another ESC sequence
+            state = ST_GROUND;
             strKind = 0;
-            if (c != '\\') handleGround(c);
+            if (c == '\\') {
+                finishOsc();
+            } else {
+                osc.setLength(0);   // aborted: do not leak into the next OSC
+                handleGround(c);
+            }
             return;
         }
         if (strKind == 3) { // string sequence terminated by ESC \
@@ -363,6 +381,10 @@ public final class TerminalEmulator {
         String s = osc.toString();
         if (s.startsWith("0;") || s.startsWith("2;")) {
             if (listener != null) { /* title: ignore for now */ }
+        } else if (s.startsWith("777;paynux-done;")) {
+            CommandListener cl = commandListener;
+            com.paynux.compat.CommandDone.Event ev = com.paynux.compat.CommandDone.parse(s);
+            if (cl != null && ev != null) cl.onCommandDone(ev.exit, ev.seconds, ev.cmd);
         }
         osc.setLength(0);
     }
@@ -370,6 +392,7 @@ public final class TerminalEmulator {
     private void beginCsi() {
         nParams = 0;
         privateMode = false;
+        csiInter = 0;
         params[0] = 0;
         for (int i = 0; i < 32; i++) { params[i] = 0; paramColon[i] = false; }
     }
@@ -380,6 +403,13 @@ public final class TerminalEmulator {
             if (nParams < params.length) {
                 params[nParams - 1] = Math.min(params[nParams - 1] * 10 + (c - '0'), 65535);
             }
+            return;
+        }
+        // Intermediate bytes (0x20-0x2F), e.g. the space in "CSI Ps SP q"
+        // (DECSCUSR), "CSI ! p" (DECSTR) or "CSI ? Ps $ p" (DECRQM). They are
+        // part of the sequence: stay in CSI and act on the final byte.
+        if (c >= 0x20 && c <= 0x2f) {
+            csiInter = c;
             return;
         }
         switch (c) {
@@ -404,6 +434,7 @@ public final class TerminalEmulator {
     }
 
     private void executeCsi(char fin) {
+        if (csiInter != 0) return; // sequences with intermediates are not implemented: ignore
         if (privateMode) {
             switch (fin) {
                 case 'h': setPrivateModes(true); break;
@@ -466,7 +497,8 @@ public final class TerminalEmulator {
                 case 1003: mouseAny = on; break;
                 case 1006: mouseSgr = on; break;
                 case 1015: mouseSgr = on; break;   // urxvt (format SGR)
-                default: break; // ?2004 bracketed paste etc: accepted, no-op
+                case 2004: bracketedPaste = on; break;
+                default: break; // other private modes: accepted, no-op
             }
         }
     }
@@ -781,7 +813,7 @@ public final class TerminalEmulator {
     private void fullReset() {
         curFg = DEFAULT_COLOR; curBg = DEFAULT_COLOR; curAttrs = 0;
         curRow = 0; curCol = 0; wrapPending = false;
-        cursorVisible = true; autowrap = true;
+        cursorVisible = true; autowrap = true; bracketedPaste = false;
         scrollTop = 0; scrollBottom = rows - 1;
         for (int r = 0; r < rows; r++) screen[r].clear(0, cols - 1);
         if (altActive) setAltScreen(false, false);
@@ -797,6 +829,7 @@ public final class TerminalEmulator {
         savedRow = 0; savedCol = 0; savedAttrs = 0;
         savedFg = DEFAULT_COLOR; savedBg = DEFAULT_COLOR;
         altActive = false; cursorVisible = true; wrapPending = false;
+        bracketedPaste = false;
         pendingBytes = 0;
         scrollTop = 0; scrollBottom = rows - 1;
         resetTabs();

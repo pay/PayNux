@@ -29,8 +29,24 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import com.paynux.terminal.PasteFormatter;
 import com.paynux.terminal.TerminalEmulator;
 import com.paynux.terminal.TerminalSession;
+import com.paynux.setup.AndroidFsOps;
+import com.paynux.setup.Downloader;
+import com.paynux.setup.OfflineInstaller;
+import com.paynux.setup.ProotSelfTest;
+import com.paynux.setup.RootfsSource;
+import com.paynux.setup.SetupListener;
+import com.paynux.setup.SetupManager;
+import com.paynux.compat.AboutInfo;
+import com.paynux.compat.AndroidPaths;
+import com.paynux.compat.CommandDone;
+import com.paynux.compat.FakeProc;
+import com.paynux.compat.ShmDir;
+import com.paynux.compat.SessionName;
+import com.paynux.compat.ToolbarConfig;
+import com.paynux.compat.UrlFinder;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -39,7 +55,9 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class MainActivity extends Activity {
 
@@ -61,6 +79,7 @@ public class MainActivity extends Activity {
         volatile boolean ready;
         volatile boolean exited;
         volatile boolean closing;   // ditutup sengaja (bukan exit tak terduga)
+        volatile String name;       // nama pilihan pengguna (null = "Session N"), hanya di memori
         Sess(int id) { this.id = id; }
     }
 
@@ -1293,11 +1312,197 @@ public class MainActivity extends Activity {
     private void showThemeMenu(View anchor) {
         android.widget.PopupMenu pm = new android.widget.PopupMenu(this, anchor);
         pm.getMenu().add(0, 1, 0, "Theme");
+        pm.getMenu().add(0, 2, 1, "About");
         pm.setOnMenuItemClickListener(item -> {
-            showThemePicker();
+            if (item.getItemId() == 2) showAbout(); else showThemePicker();
             return true;
         });
         pm.show();
+    }
+
+    /** Segarkan About tiap sekian ms selama dialog terbuka (0 = tampil statis saja). */
+    private static final int ABOUT_REFRESH_MS = 2000;
+
+    private void showAbout() {
+        String distro = null;
+        try {
+            distro = AboutInfo.prettyName(
+                    readText(new File(ubuntuDir, "etc/os-release")));
+        } catch (Throwable ignored) { }
+        final String distroFinal = distro;
+
+        final TextView tv = new TextView(this);
+        tv.setTypeface(Typeface.MONOSPACE);
+        tv.setTextSize(11);
+        tv.setTextColor(Color.WHITE);
+        tv.setText(renderAbout(AboutInfo.rows(collectAboutData(distroFinal))));
+
+        android.widget.ScrollView sv = new android.widget.ScrollView(this);
+        sv.setPadding(dp(24), dp(20), dp(24), dp(4));
+        sv.addView(tv);
+
+        final android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(this,
+                android.R.style.Theme_Material_Dialog_Alert)
+                .setView(sv)
+                .setPositiveButton("OK", null)
+                .create();
+
+        final android.os.Handler h =
+                new android.os.Handler(android.os.Looper.getMainLooper());
+        final Runnable tick = new Runnable() {
+            @Override public void run() {
+                if (!dlg.isShowing()) return;
+                tv.setText(renderAbout(
+                        AboutInfo.rows(collectAboutData(distroFinal))));
+                h.postDelayed(this, ABOUT_REFRESH_MS);
+            }
+        };
+        dlg.setOnDismissListener(d -> h.removeCallbacks(tick));
+        dlg.show();
+        if (ABOUT_REFRESH_MS > 0) h.postDelayed(tick, ABOUT_REFRESH_MS);
+    }
+
+    /** Kumpulkan info HP (tanpa izin khusus). Nilai yang gagal dibaca dibiarkan kosong ("-"). */
+    private AboutInfo.Data collectAboutData(String distro) {
+        AboutInfo.Data d = new AboutInfo.Data();
+        d.distro = distro;
+        try {
+            android.content.pm.PackageInfo pi =
+                    getPackageManager().getPackageInfo(getPackageName(), 0);
+            d.appVersionName = pi.versionName;
+            d.appVersionCode = pi.versionCode;
+        } catch (Throwable ignored) { }
+        try {
+            d.manufacturer = android.os.Build.MANUFACTURER;
+            d.model = android.os.Build.MODEL;
+            d.androidRelease = android.os.Build.VERSION.RELEASE;
+            d.sdkInt = android.os.Build.VERSION.SDK_INT;
+            d.securityPatch = android.os.Build.VERSION.SECURITY_PATCH;
+            d.kernel = System.getProperty("os.version");
+            d.cpuCores = Runtime.getRuntime().availableProcessors();
+            if (android.os.Build.SUPPORTED_ABIS.length > 0) {
+                d.abi = android.os.Build.SUPPORTED_ABIS[0];
+            }
+        } catch (Throwable ignored) { }
+        try {
+            android.app.ActivityManager am = (android.app.ActivityManager)
+                    getSystemService(ACTIVITY_SERVICE);
+            android.app.ActivityManager.MemoryInfo mi =
+                    new android.app.ActivityManager.MemoryInfo();
+            am.getMemoryInfo(mi);
+            d.ramTotalBytes = mi.totalMem;
+            d.ramAvailBytes = mi.availMem;
+        } catch (Throwable ignored) { }
+        try {
+            android.os.StatFs sf = new android.os.StatFs(
+                    android.os.Environment.getDataDirectory().getPath());
+            d.storageTotalBytes = sf.getTotalBytes();
+            d.storageFreeBytes = sf.getAvailableBytes();
+        } catch (Throwable ignored) { }
+        try {
+            android.util.DisplayMetrics dm = new android.util.DisplayMetrics();
+            getWindowManager().getDefaultDisplay().getRealMetrics(dm);
+            d.screenW = dm.widthPixels;
+            d.screenH = dm.heightPixels;
+            d.dpi = dm.densityDpi;
+        } catch (Throwable ignored) { }
+        try {
+            android.content.Intent b = registerReceiver(null,
+                    new android.content.IntentFilter(
+                            android.content.Intent.ACTION_BATTERY_CHANGED));
+            if (b != null) {
+                int level = b.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1);
+                int scale = b.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, -1);
+                if (level >= 0 && scale > 0) d.batteryPercent = level * 100 / scale;
+                int st = b.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, -1);
+                d.charging = Boolean.valueOf(
+                        st == android.os.BatteryManager.BATTERY_STATUS_CHARGING
+                                || st == android.os.BatteryManager.BATTERY_STATUS_FULL);
+            }
+        } catch (Throwable ignored) { }
+        d.uptimeMs = android.os.SystemClock.elapsedRealtime();
+        Sess s = active;
+        if (s != null && s.emu != null) {
+            d.termRows = s.emu.getRows();
+            d.termCols = s.emu.getCols();
+        }
+        return d;
+    }
+
+    /** Gaya aplikasi: monospace, label cyan, nilai putih, judul bagian redup. */
+    private CharSequence renderAbout(java.util.List<AboutInfo.Row> rows) {
+        final int dim = Color.rgb(140, 140, 140);
+        int w = AboutInfo.labelWidth(rows);
+        android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder();
+        for (int i = 0; i < rows.size(); i++) {
+            AboutInfo.Row r = rows.get(i);
+            int start = sb.length();
+            switch (r.kind) {
+                case TITLE:
+                    sb.append(r.value);
+                    styleSpan(sb, start, sb.length(), CYAN_COLOR, 14, true);
+                    break;
+                case SUBTITLE:
+                    sb.append(r.value);
+                    styleSpan(sb, start, sb.length(), dim, 10, false);
+                    break;
+                case SECTION:
+                    sb.append(r.value);
+                    styleSpan(sb, start, sb.length(), dim, 9, true);
+                    break;
+                case KV: {
+                    sb.append("  ");
+                    int ls = sb.length();
+                    StringBuilder label = new StringBuilder(r.label);
+                    while (label.length() < w) label.append(' ');
+                    sb.append(label);
+                    styleSpan(sb, ls, sb.length(), CYAN_COLOR, 11, false);
+                    int vs = sb.length();
+                    sb.append(r.value);
+                    styleSpan(sb, vs, sb.length(), Color.WHITE, 11, false);
+                    break;
+                }
+                default:
+                    break;
+            }
+            if (i < rows.size() - 1) sb.append('\n');
+        }
+        return sb;
+    }
+
+    private static void styleSpan(android.text.SpannableStringBuilder sb,
+                                  int from, int to, int color, int sizeDp, boolean bold) {
+        if (to <= from) return;
+        sb.setSpan(new android.text.style.ForegroundColorSpan(color), from, to,
+                android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        sb.setSpan(new android.text.style.AbsoluteSizeSpan(sizeDp, true), from, to,
+                android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        if (bold) {
+            sb.setSpan(new android.text.style.StyleSpan(Typeface.BOLD), from, to,
+                    android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+    }
+
+    /** Judul dialog bergaya aplikasi. */
+    private TextView dialogTitleView(String text) {
+        TextView t = new TextView(this);
+        t.setText(text);
+        t.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        t.setTextSize(14);
+        t.setTextColor(CYAN_COLOR);
+        t.setPadding(dp(24), dp(20), dp(24), dp(8));
+        return t;
+    }
+
+    /** Isi dialog bergaya aplikasi. */
+    private TextView dialogMessageView(String text) {
+        TextView t = new TextView(this);
+        t.setText(text);
+        t.setTypeface(Typeface.MONOSPACE);
+        t.setTextSize(12);
+        t.setTextColor(Color.WHITE);
+        t.setPadding(dp(24), dp(8), dp(24), dp(8));
+        return t;
     }
 
     private void showThemePicker() {
@@ -1366,14 +1571,8 @@ public class MainActivity extends Activity {
         try {
             if (!f.isFile()) { writeDefaultToolbarConfig(f); return def; }
             String txt = readText(f);
-            for (String line : txt.split("\n")) {
-                String l = line.trim();
-                if (!l.startsWith("extra-keys")) continue;
-                int eq = l.indexOf('=');
-                if (eq < 0) continue;
-                java.util.List<java.util.List<String>> rows = parseToolbarRows(l.substring(eq + 1));
-                if (rows != null && !rows.isEmpty()) return rows;
-            }
+            java.util.List<java.util.List<String>> rows = ToolbarConfig.parse(txt);
+            if (rows != null && !rows.isEmpty()) return rows;
         } catch (Throwable ignored) { }
         return def;
     }
@@ -1383,6 +1582,7 @@ public class MainActivity extends Activity {
             f.getParentFile().mkdirs();
             writeText(f, "# PayNux toolbar - same format as Termux extra-keys.\n"
                     + "# Edit, then reopen the app. Delete this file to restore the defaults.\n"
+                    + "# Termux style also works: quoted keys, \\ line breaks, DRAWER = SESS.\n"
                     + "# Keys: ESC TAB CTRL ALT HOME END PGUP PGDN UP DOWN LEFT RIGHT\n"
                     + "#       SESS (session panel) KEYBOARD (\u2328) SPACE ENTER BACKSPACE\n"
                     + "# Any other key is sent as-is (up to 3 letters are shown).\n"
@@ -1392,39 +1592,7 @@ public class MainActivity extends Activity {
 
     /** Parse "[[A,B],[C,D]]" -> [[A,B],[C,D]]; null bila tidak ada baris. */
     static java.util.List<java.util.List<String>> parseToolbarRows(String v) {
-        java.util.List<java.util.List<String>> rows = new java.util.ArrayList<>();
-        java.util.List<String> row = null;
-        StringBuilder cur = new StringBuilder();
-        int depth = 0;
-        for (int i = 0; i < v.length(); i++) {
-            char c = v.charAt(i);
-            if (c == '[') {
-                depth++;
-                if (depth == 2) row = new java.util.ArrayList<>();
-                continue;
-            }
-            if (c == ']') {
-                if (depth == 2 && row != null) {
-                    String t = cur.toString().trim();
-                    if (!t.isEmpty()) row.add(t);
-                    cur.setLength(0);
-                    if (!row.isEmpty()) rows.add(row);
-                    row = null;
-                }
-                depth--;
-                continue;
-            }
-            if (depth == 2 && row != null) {
-                if (c == ',') {
-                    String t = cur.toString().trim();
-                    if (!t.isEmpty()) row.add(t);
-                    cur.setLength(0);
-                } else {
-                    cur.append(c);
-                }
-            }
-        }
-        return rows.isEmpty() ? null : rows;
+        return ToolbarConfig.parseRows(v);
     }
 
     /** Tambahkan satu token konfigurasi sebagai tombol toolbar. */
@@ -2259,7 +2427,66 @@ public class MainActivity extends Activity {
                 if (sc.ts != null) sc.ts.write(data);
             }
         });
+        sc.emu.setCommandListener(new TerminalEmulator.CommandListener() {
+            @Override public void onCommandDone(int exit, long seconds, String cmd) {
+                onCommandFinished(sc, exit, seconds, cmd);
+            }
+        });
         return sc;
+    }
+
+    private static long lastDoneNotifMs;
+    private static int doneNotifSeq;
+
+    /**
+     * A long command finished (reported by the shell hook). Always recorded in
+     * the in-app bell list; a system notification is posted only when PayNux is
+     * in the background, at most one every 3 seconds.
+     */
+    private static void onCommandFinished(Sess sc, int exit, long seconds, String cmd) {
+        String title = CommandDone.title(exit, cmd);
+        String text = CommandDone.text(exit, seconds, sessionTitle(sc));
+        addNotif(exit == 0 ? "ok" : "warn", title, text);
+        if (appVisible || appCtx == null) return;
+        long now = System.currentTimeMillis();
+        synchronized (MainActivity.class) {
+            if (now - lastDoneNotifMs < 3000) return;
+            lastDoneNotifMs = now;
+        }
+        postDoneNotification(appCtx, title, text);
+    }
+
+    private static void postDoneNotification(android.content.Context ctx, String title, String text) {
+        try {
+            android.app.NotificationManager nm = (android.app.NotificationManager)
+                    ctx.getSystemService(android.content.Context.NOTIFICATION_SERVICE);
+            if (nm == null) return;
+            android.app.Notification.Builder b;
+            if (android.os.Build.VERSION.SDK_INT >= 26) {
+                nm.createNotificationChannel(new android.app.NotificationChannel(
+                        "paynux_done", "Command finished",
+                        android.app.NotificationManager.IMPORTANCE_DEFAULT));
+                b = new android.app.Notification.Builder(ctx, "paynux_done");
+            } else {
+                b = new android.app.Notification.Builder(ctx);
+            }
+            int icon = ctx.getApplicationInfo().icon;
+            if (icon == 0) icon = android.R.drawable.sym_def_app_icon;
+            android.content.Intent open = new android.content.Intent(ctx, MainActivity.class)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                            | android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP
+                            | android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            android.app.PendingIntent pi = android.app.PendingIntent.getActivity(ctx, 11, open,
+                    android.app.PendingIntent.FLAG_UPDATE_CURRENT
+                            | android.app.PendingIntent.FLAG_IMMUTABLE);
+            b.setSmallIcon(icon)
+                    .setContentTitle(title)
+                    .setContentText(text)
+                    .setContentIntent(pi)
+                    .setAutoCancel(true)
+                    .setWhen(System.currentTimeMillis());
+            nm.notify(3000 + (doneNotifSeq++ % 20), b.build());
+        } catch (Throwable ignored) { }
     }
 
     private static TerminalSession.Callback callbackFor(final Sess sc) {
@@ -2274,15 +2501,15 @@ public class MainActivity extends Activity {
                 if (wasReady && !sc.closing) {
                     if (code == 0) {
                         addNotif("info", "Session ended",
-                                "Shell " + sc.id + " exited normally.");
+                                sessionTitle(sc) + " exited normally.");
                     } else {
                         addNotif("warn", "Session exited",
-                                "Shell " + sc.id + " exited with code " + code + ".");
+                                sessionTitle(sc) + " exited with code " + code + ".");
                     }
                 }
                 feedTo(sc.emu, "\n\n[Ubuntu process exited] code=" + code + "\n");
                 if (sessions.size() <= 1) {
-                    feedTo(sc.emu, "[Tap the session button, long-press this session, then Close"
+                    feedTo(sc.emu, "[Tap the session button, long-press this session, then Close session"
                             + " to start a new one]\n");
                 }
                 if (sc == active) {
@@ -2546,7 +2773,7 @@ public class MainActivity extends Activity {
             row.setBackground(rowBg);
 
             TextView t1 = new TextView(this);
-            t1.setText((act ? "\u25B6 " : "  ") + "Session " + sc.id);
+            t1.setText((act ? "\u25B6 " : "  ") + sessionTitle(sc));
             t1.setTextColor(act ? CYAN_COLOR : Color.WHITE);
             t1.setTextSize(12);
             t1.setTypeface(Typeface.MONOSPACE,
@@ -2568,13 +2795,7 @@ public class MainActivity extends Activity {
             });
             row.setOnLongClickListener(v -> {
                 onDismiss.run();
-                new android.app.AlertDialog.Builder(this,
-                        android.R.style.Theme_Material_Dialog_Alert)
-                        .setMessage("Close session " + sc.id + "?")
-                        .setPositiveButton("Close",
-                                (d2, w2) -> closeSession(sc))
-                        .setNegativeButton("Cancel", null)
-                        .show();
+                showRenameSession(sc);
                 return true;
             });
             panel.addView(row);
@@ -2706,6 +2927,13 @@ public class MainActivity extends Activity {
         return v.getText().subSequence(s, e).toString().trim();
     }
 
+    /** URL yang disentuh seleksi (seleksi sebagian cukup), atau seluruh seleksi bila itu URL. */
+    private static String urlForSelection(TextView v) {
+        String url = UrlFinder.urlAround(v.getText(),
+                v.getSelectionStart(), v.getSelectionEnd());
+        return url != null ? url : asUrl(selectedText(v));
+    }
+
     /** Kenali URL; "example.com" dilengkapi https://. Null bila bukan URL. */
     static String asUrl(String s) {
         if (s == null) return null;
@@ -2744,7 +2972,7 @@ public class MainActivity extends Activity {
                 // Termux punya "Select all" di menu seleksi.
                 menu.add(android.view.Menu.NONE, MENU_ID_SELECT_ALL, 101, "Select all");
                 // Termux: tautan bisa langsung dibuka dari menu seleksi.
-                if (asUrl(selectedText(view)) != null) {
+                if (urlForSelection(view) != null) {
                     menu.add(android.view.Menu.NONE, MENU_ID_OPEN_URL, 99, "Open link");
                 }
                 return true;
@@ -2754,6 +2982,17 @@ public class MainActivity extends Activity {
             public boolean onPrepareActionMode(
                     android.view.ActionMode mode,
                     android.view.Menu menu) {
+                // Selection may change (handles): add/remove "Open link" to match.
+                boolean has = menu.findItem(MENU_ID_OPEN_URL) != null;
+                boolean want = urlForSelection(view) != null;
+                if (want && !has) {
+                    menu.add(android.view.Menu.NONE, MENU_ID_OPEN_URL, 99, "Open link");
+                    return true;
+                }
+                if (!want && has) {
+                    menu.removeItem(MENU_ID_OPEN_URL);
+                    return true;
+                }
                 return false;
             }
 
@@ -2785,7 +3024,7 @@ public class MainActivity extends Activity {
                     return true;
                 }
                 if (item.getItemId() == MENU_ID_OPEN_URL) {
-                    String url = asUrl(selectedText(view));
+                    String url = urlForSelection(view);
                     if (url != null) openUrl(url);
                     mode.finish();
                     return true;
@@ -3128,6 +3367,51 @@ public class MainActivity extends Activity {
         @Override public boolean setComposingRegion(int start, int end) { return true; }
     }
 
+    /** Nama yang ditampilkan untuk sebuah sesi. */
+    private static String sessionTitle(Sess sc) {
+        String n = sc.name;
+        return (n == null || n.isEmpty()) ? "Session " + sc.id : n;
+    }
+
+    /** Tekan lama sesi = ganti nama (bukan hapus). Kosong = kembali ke "Session N". */
+    private void showRenameSession(final Sess sc) {
+        final android.widget.EditText input = new android.widget.EditText(this);
+        input.setSingleLine(true);
+        input.setTypeface(Typeface.MONOSPACE);
+        input.setTextSize(12);
+        input.setTextColor(Color.WHITE);
+        input.setHintTextColor(Color.rgb(140, 140, 140));
+        input.setHint("Session " + sc.id);
+        input.setText(sc.name == null ? "" : sc.name);
+        input.setSelection(input.getText().length());
+        new android.app.AlertDialog.Builder(this,
+                android.R.style.Theme_Material_Dialog_Alert)
+                .setCustomTitle(dialogTitleView("Rename session"))
+                .setView(input)
+                .setPositiveButton("Save", (d, w) ->
+                        sc.name = SessionName.clean(input.getText().toString()))
+                .setNeutralButton("Close session", (d, w) -> confirmCloseSession(sc))
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    /** Menutup sesi butuh dua langkah sadar: tombol di dialog ganti nama + konfirmasi ini. */
+    private void confirmCloseSession(final Sess sc) {
+        new android.app.AlertDialog.Builder(this,
+                android.R.style.Theme_Material_Dialog_Alert)
+                .setCustomTitle(dialogTitleView("Close session"))
+                .setView(dialogMessageView("Close " + sessionTitle(sc) + "?"))
+                .setPositiveButton("Close", (d, w) -> closeSession(sc))
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    /** True while the active session's app asked for bracketed paste (?2004). */
+    private static boolean isBracketedPasteActive() {
+        Sess s = active;
+        return s != null && s.emu != null && s.emu.isBracketedPaste();
+    }
+
     private void pasteFromClipboard() {
         ClipboardManager cm =
                 (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
@@ -3139,7 +3423,10 @@ public class MainActivity extends Activity {
         ClipData d = cm.getPrimaryClip();
         if (d != null && d.getItemCount() > 0) {
             CharSequence t = d.getItemAt(0).coerceToText(this);
-            if (t != null) shellWrite(t.toString());
+            if (t != null) {
+                shellWrite(PasteFormatter.format(
+                        t.toString(), isBracketedPasteActive()));
+            }
         }
     }
 
@@ -3465,9 +3752,34 @@ public class MainActivity extends Activity {
                         "bin/bash"
                 );
 
+        boolean freshInstall = false;
+
         if (!bash.exists()) {
 
-            installUbuntu();
+            freshInstall = true;
+
+            // 1) Online setup (pinned + verified download).
+            installUbuntuOnline();
+
+            // 2) Bundled rootfs, extracted with exact modes (xz -> TarExtractor).
+            if (!bash.exists()) {
+
+                appendOutput(
+                        "[*] Using bundled offline rootfs...\n"
+                );
+
+                installUbuntuBundled();
+            }
+
+            // 3) Last resort: the original installer, unchanged.
+            if (!bash.exists()) {
+
+                appendOutput(
+                        "[*] Trying legacy installer...\n"
+                );
+
+                installUbuntu();
+            }
 
         } else {
 
@@ -3488,9 +3800,213 @@ public class MainActivity extends Activity {
             );
         }
 
+        if (freshInstall) {
+            runProotSelfTest();
+        }
+
         bootLog(
                 "[+] Runtime ready.\n\n"
         );
+    }
+
+    // ============================================================
+    // ONLINE SETUP (SetupManager) + PROOT SELF-TEST
+    // ============================================================
+
+    /** Renders SetupManager progress in the terminal (one updating line). */
+    private static final class SetupUi implements SetupListener {
+        private String stage = "";
+        private long lastMs;
+        private boolean lineOpen;
+
+        @Override
+        public void onStage(String s) {
+            closeLine();
+            stage = s;
+            appendOutput("[*] " + s + "...\n");
+        }
+
+        @Override
+        public void onProgress(long done, long total) {
+            long now = System.currentTimeMillis();
+            boolean last = total > 0 && done >= total;
+            if (now - lastMs < 400 && !last) return;
+            lastMs = now;
+            String text;
+            if (total > 0) {
+                text = String.format(java.util.Locale.US,
+                        "    %.1f / %.1f MB (%d%%)",
+                        done / 1048576.0, total / 1048576.0, done * 100 / total);
+            } else if (stage.startsWith("Downloading")) {
+                text = String.format(java.util.Locale.US,
+                        "    %.1f MB", done / 1048576.0);
+            } else {
+                text = "    " + done + " entries";
+            }
+            appendOutput("\r\u001b[2K\u001b[90m" + text + "\u001b[0m");
+            lineOpen = true;
+        }
+
+        @Override
+        public void onLog(String line) {
+            closeLine();
+            appendOutput(line + "\n");
+        }
+
+        void close() {
+            closeLine();
+        }
+
+        private void closeLine() {
+            if (lineOpen) {
+                appendOutput("\n");
+                lineOpen = false;
+            }
+        }
+    }
+
+    /**
+     * Downloads, verifies and installs the pinned Ubuntu rootfs. Never throws:
+     * on any failure it reports and returns, and the caller falls back to the
+     * bundled offline rootfs because /bin/bash is still missing.
+     */
+    private void installUbuntuOnline() {
+
+        SetupUi ui = new SetupUi();
+
+        try {
+
+            SetupManager mgr = new SetupManager(
+                    getFilesDir(),
+                    ubuntuDir,
+                    SetupManager.Config.official(),
+                    Downloader.defaults(),
+                    new AndroidFsOps(),
+                    ui
+            );
+
+            mgr.install(null);
+
+            ui.close();
+
+            addNotif("ok", "Ubuntu installed",
+                    "Ubuntu " + RootfsSource.VERSION
+                            + " downloaded and verified.");
+
+        } catch (SetupManager.SetupException e) {
+
+            ui.close();
+
+            appendOutput("[!] Online setup failed: " + e.kind + "\n");
+            appendOutput("    " + e.getMessage() + "\n");
+
+            addNotif("warn", "Online setup failed", notifShort(e));
+
+        } catch (Throwable t) {
+
+            ui.close();
+
+            appendOutput("[!] Online setup error: " + t + "\n");
+        }
+    }
+
+    /**
+     * Installs the rootfs bundled in the APK: xz output is piped straight
+     * into TarExtractor (exact modes, no temporary .tar, no chmod -R). Never
+     * throws; on failure the caller tries the legacy installer next.
+     */
+    private void installUbuntuBundled() {
+
+        SetupUi ui = new SetupUi();
+
+        try {
+
+            Map<String, String> env = new HashMap<>();
+            env.put("LD_LIBRARY_PATH",
+                    symlinkDir.getAbsolutePath() + ":"
+                            + runtimeDir.getAbsolutePath());
+
+            OfflineInstaller installer = new OfflineInstaller(
+                    getFilesDir(),
+                    ubuntuDir,
+                    new File(runtimeDir, "libxz.so"),
+                    env,
+                    new AndroidFsOps(),
+                    ui,
+                    "ubuntu-24.04-aarch64.tar.xz",
+                    new OfflineInstaller.AssetSource() {
+                        @Override
+                        public java.io.InputStream open()
+                                throws java.io.IOException {
+                            return getAssets().open(
+                                    "ubuntu-24.04-aarch64.tar.xz");
+                        }
+                    },
+                    OfflineInstaller.DEFAULT_MIN_FREE_BYTES
+            );
+
+            installer.install(null);
+
+            ui.close();
+
+            addNotif("ok", "Ubuntu installed",
+                    "Ubuntu 24.04 extracted from the bundled archive.");
+
+        } catch (SetupManager.SetupException e) {
+
+            ui.close();
+
+            appendOutput(
+                    "[!] Bundled setup failed (" + e.kind + "):\n"
+                            + "    " + e.getMessage() + "\n"
+            );
+
+            addNotif("warn", "Bundled setup failed", notifShort(e));
+
+        } catch (Throwable t) {
+
+            ui.close();
+
+            appendOutput("[!] Bundled setup error: " + t + "\n");
+        }
+    }
+
+    /**
+     * Runs a short command inside the new rootfs through PRoot. Environment
+     * mirrors startUbuntu(); keep the two in sync. A failure is reported but
+     * does not stop the boot (startUbuntu will surface the real error).
+     */
+    private void runProotSelfTest() {
+
+        try {
+
+            appendOutput("[*] Verifying PRoot...\n");
+
+            Map<String, String> env = new HashMap<>();
+            env.put("LD_LIBRARY_PATH",
+                    symlinkDir.getAbsolutePath() + ":"
+                            + runtimeDir.getAbsolutePath());
+            env.put("PROOT_TMP_DIR", getCacheDir().getAbsolutePath());
+            if (!kernelSupportsSeccompTrace()) {
+                env.put("PROOT_NO_SECCOMP", "1");
+            }
+            env.put("PROOT_LOADER",
+                    getFilesDir().getAbsolutePath() + "/proot_loader");
+
+            ProotSelfTest.Result r = new ProotSelfTest(
+                    prootFile, ubuntuDir, env, "24.04", 30000L).run();
+
+            appendOutput(r.report());
+
+            if (!r.ok) {
+                addNotif("warn", "PRoot self-test failed",
+                        "Ubuntu is installed but the shell check failed.");
+            }
+
+        } catch (Throwable t) {
+
+            appendOutput("[!] PRoot self-test error: " + t + "\n");
+        }
     }
 
     // ============================================================
@@ -4008,7 +4524,8 @@ public class MainActivity extends Activity {
                 + "  command -v fuser >/dev/null 2>&1 && fuser -k -n tcp \"$p\" 2>/dev/null || echo \"[!] fuser not found (apt install psmisc)\"\n"
                 + "  sleep 1\n"
                 + "  if portbusy \"$p\"; then echo \"[!] port $p is still in use\"; else echo \"[+] port $p released\"; fi\n"
-                + "}\n";
+                + "}\n"
+                + CommandDone.HOOK;
 
     private static void writeText(File f, String text) throws Exception {
         try (java.io.FileOutputStream o = new java.io.FileOutputStream(f, false)) {
@@ -4184,10 +4701,19 @@ public class MainActivity extends Activity {
 
         command.add("-b");
         command.add("/proc");
+        // Android denies /proc/stat, /proc/loadavg and /proc/uptime to apps;
+        // fake only the ones that cannot be read (htop, top, ps, uptime).
+        addFakeProcBinds(command);
         command.add("-b");
         command.add("/dev");
+        // Android has no /dev/shm; POSIX shared memory (Python multiprocessing,
+        // Chromium, PostgreSQL) needs one: bind an app-private folder (mode 1777).
+        addShmBind(command);
         command.add("-b");
         command.add("/sys");
+        // Android system partitions at the same path inside the guest: only
+        // those that exist and are readable on this device.
+        addAndroidBinds(command);
         command.add("-b");
         command.add("/system/etc/hosts:/etc/hosts");
         command.add("-b");
@@ -4404,6 +4930,78 @@ public class MainActivity extends Activity {
         scheduleRender();
     }
 
+    /** Binds /system, /apex, /vendor and /product when usable. Never throws; skipped paths just stay absent. */
+    private void addAndroidBinds(List<String> command) {
+
+        try {
+
+            for (String path : AndroidPaths.select(AndroidPaths.defaultProbe())) {
+
+                command.add("-b");
+                command.add(path);
+            }
+
+        } catch (Throwable t) {
+
+            appendOutput(
+                    "[!] Android system binds skipped: " + t + "\n"
+            );
+        }
+    }
+
+    /** Binds files/shm as /dev/shm. Never throws: on failure /dev/shm simply stays absent. */
+    private void addShmBind(List<String> command) {
+
+        try {
+
+            String spec = ShmDir.prepare(
+                    new File(getFilesDir(), "shm"), new AndroidFsOps());
+
+            command.add("-b");
+            command.add(spec);
+
+        } catch (Throwable t) {
+
+            appendOutput(
+                    "[!] /dev/shm not available: " + t + "\n"
+            );
+        }
+    }
+
+    /**
+     * Adds PRoot binds for fake /proc files, but only for the files the host
+     * refuses to open. Never throws: on failure /proc is left as is.
+     */
+    private void addFakeProcBinds(List<String> command) {
+
+        try {
+
+            File dir = new File(getFilesDir(), "fake_proc");
+
+            int cpus = Math.max(1,
+                    Runtime.getRuntime().availableProcessors());
+
+            long uptimeSec =
+                    android.os.SystemClock.elapsedRealtime() / 1000L;
+
+            long nowSec = System.currentTimeMillis() / 1000L;
+
+            for (String spec : FakeProc.prepare(
+                    dir, FakeProc.defaultProbe(),
+                    cpus, uptimeSec, nowSec)) {
+
+                command.add("-b");
+                command.add(spec);
+            }
+
+        } catch (Throwable t) {
+
+            appendOutput(
+                    "[!] Fake /proc not available: " + t + "\n"
+            );
+        }
+    }
+
     /**
      * Kernel Linux >= 3.5 mendukung PTRACE_EVENT_SECCOMP, syarat agar proot
      * bisa memakai akselerasi seccomp (tanpa itu proot jatuh ke ptrace biasa
@@ -4434,6 +5032,21 @@ public class MainActivity extends Activity {
         } catch (Throwable ignored) {
             return false;
         }
+    }
+
+    /** True while the Activity is visible: "command finished" notifications are only shown in the background. */
+    private static volatile boolean appVisible;
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        appVisible = true;
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        appVisible = false;
     }
 
     @Override
