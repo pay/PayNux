@@ -266,6 +266,7 @@ public class MainActivity extends Activity {
 
                     } catch (Exception e) {
 
+                        setupFail();
                         addNotif("err", "Setup failed", notifShort(e));
                         appendOutput(
                                 "\n[PAYNUX ERROR]\n" +
@@ -927,6 +928,7 @@ public class MainActivity extends Activity {
 
         setupDrawer(frame);
         setContentView(frame);
+        if (setupActive) showSetupOverlay();   // activity dibuat ulang saat setup masih jalan
 
         // jepit dua jari = ubah ukuran font (pengganti tombol A-/A+)
         scaleDetector = new android.view.ScaleGestureDetector(this,
@@ -2396,6 +2398,9 @@ public class MainActivity extends Activity {
     // ============================================================
 
     private static void appendOutput(String text) {
+        // selama setup pertama: semua status ke mini terminal di layar setup,
+        // bukan ke terminal utama (terminal penuh baru dibuka setelah selesai)
+        if (setupActive) { setupMirror(text); return; }
         if (emulator == null || text == null) return;
         text = colorizeStatusLines(text);
         // status boot memakai \n telanjang; terminal butuh \r\n agar
@@ -4113,6 +4118,7 @@ public class MainActivity extends Activity {
         if (!bash.exists()) {
 
             freshInstall = true;
+            setupBegin();
 
             // 1) Online setup (pinned + verified download).
             installUbuntuOnline();
@@ -4169,6 +4175,478 @@ public class MainActivity extends Activity {
     // ONLINE SETUP (SetupManager) + PROOT SELF-TEST
     // ============================================================
 
+    // ============================================================
+    // LAYAR SETUP: mini terminal saat instalasi pertama
+    // (download, verifikasi, extract, ...). Terminal penuh dibuka setelah selesai.
+    // ============================================================
+
+    private static final String[] SETUP_STEPS = {"Download", "Verify", "Extract", "Install", "Shell"};
+
+    private static volatile boolean setupActive;
+    private static volatile boolean setupFailed;
+    private static volatile int setupStep;
+    private static volatile String setupStageText = "";
+    private static volatile long setupDone, setupTotal;
+    private static final java.util.ArrayList<String> setupLines = new java.util.ArrayList<>();
+    private static final StringBuilder setupPartial = new StringBuilder();
+
+    private android.widget.FrameLayout setupOverlay;
+    private TextView setupTitleTv, setupSubTv, setupStageTv, setupPctTv, setupSizeTv, setupLogTv;
+    private android.widget.ProgressBar setupBar;
+    private ScrollView setupLogScroll;
+    private LinearLayout setupButtons;
+    private View[] setupDots;
+    private TextView[] setupLabels;
+
+    private static void setupBegin() {
+        synchronized (setupLines) {
+            setupLines.clear();
+            setupPartial.setLength(0);
+        }
+        setupStep = 0;
+        setupStageText = "Preparing";
+        setupDone = 0;
+        setupTotal = 0;
+        setupFailed = false;
+        setupActive = true;
+        setupNotify();
+    }
+
+    private static void setupSetStage(String s) {
+        int st;
+        if (s.startsWith("Verifying SHA")) st = 1;
+        else if (s.startsWith("Extract")) st = 2;
+        else if (s.startsWith("Install")) st = 3;
+        else if (s.startsWith("Starting") || s.startsWith("Verifying PRoot")) st = 4;
+        else st = 0;   // free space, cached download, downloading, bundled rootfs
+        setupStep = st;
+        setupStageText = s;
+        setupDone = 0;
+        setupTotal = 0;
+        setupNotify();
+    }
+
+    private static void setupSetProgress(long done, long total) {
+        setupDone = done;
+        setupTotal = total;
+        setupNotify();
+    }
+
+    private static void setupFail() {
+        if (!setupActive) return;
+        setupFailed = true;
+        setupNotify();
+    }
+
+    private static void setupFinish() {
+        if (!setupActive) return;
+        setupStep = SETUP_STEPS.length;
+        setupStageText = "Ready";
+        setupDone = 1;
+        setupTotal = 1;
+        setupActive = false;
+        setupNotify();
+    }
+
+    /** Teks status -> baris log mini terminal (escape ANSI dibuang, \r = timpa baris). */
+    private static void setupMirror(String text) {
+        if (text == null) return;
+        text = text.replace("\r\n", "\n");
+        synchronized (setupLines) {
+            int n = text.length();
+            for (int i = 0; i < n; i++) {
+                char c = text.charAt(i);
+                if (c == '\u001b') {
+                    if (i + 1 < n && text.charAt(i + 1) == '[') {
+                        int j = i + 2;
+                        while (j < n && !Character.isLetter(text.charAt(j))) j++;
+                        i = j;
+                    }
+                } else if (c == '\r') {
+                    setupPartial.setLength(0);
+                } else if (c == '\n') {
+                    setupLines.add(setupPartial.toString());
+                    setupPartial.setLength(0);
+                    while (setupLines.size() > 400) setupLines.remove(0);
+                } else {
+                    setupPartial.append(c);
+                }
+            }
+        }
+        setupNotify();
+    }
+
+    private static void setupNotify() {
+        uiPost(() -> {
+            MainActivity a = current;
+            if (a != null) a.refreshSetup();
+        });
+    }
+
+    private void refreshSetup() {
+        if (setupActive && setupOverlay == null) showSetupOverlay();
+        if (setupOverlay == null) return;
+        renderSetup();
+        if (!setupActive) {
+            // selesai: tampilkan 100% sebentar, lalu pudar -> terminal penuh
+            final android.widget.FrameLayout ov = setupOverlay;
+            setupOverlay = null;
+            ov.animate().alpha(0f).setStartDelay(700).setDuration(250)
+                    .withEndAction(() -> {
+                        android.view.ViewParent par = ov.getParent();
+                        if (par instanceof android.view.ViewGroup) {
+                            ((android.view.ViewGroup) par).removeView(ov);
+                        }
+                    }).start();
+        }
+    }
+
+    /** Setup gagal: buka terminal penuh, log setup ikut disalin ke sana. */
+    private void dismissSetupOverlay() {
+        StringBuilder sb2 = new StringBuilder();
+        synchronized (setupLines) {
+            for (String l : setupLines) sb2.append(l).append('\n');
+            if (setupPartial.length() > 0) sb2.append(setupPartial).append('\n');
+        }
+        setupActive = false;
+        setupFailed = false;
+        if (emulator != null) {
+            emulator.feed(sb2.toString().replace("\n", "\r\n"));
+            scheduleRender();
+        }
+        if (setupOverlay != null) {
+            android.view.ViewParent par = setupOverlay.getParent();
+            if (par instanceof android.view.ViewGroup) {
+                ((android.view.ViewGroup) par).removeView(setupOverlay);
+            }
+            setupOverlay = null;
+        }
+    }
+
+    private TextView setupButton(String label, int color, View.OnClickListener click) {
+        TextView b = new TextView(this);
+        b.setText(label);
+        b.setTextSize(13);
+        b.setTextColor(color);
+        b.setTypeface(Typeface.create(monoTypeface(), Typeface.BOLD));
+        b.setGravity(Gravity.CENTER);
+        b.setPadding(dp(12), dp(11), dp(12), dp(11));
+        b.setBackground(bubbleShape(Palette.KEY, color));
+        b.setClickable(true);
+        b.setOnClickListener(click);
+        return b;
+    }
+
+    private View setupTitleDot(int color) {
+        View d = new View(this);
+        android.graphics.drawable.GradientDrawable g = new android.graphics.drawable.GradientDrawable();
+        g.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+        g.setColor(color);
+        d.setBackground(g);
+        return d;
+    }
+
+    private void showSetupOverlay() {
+        if (setupOverlay != null) return;
+        android.view.ViewGroup content = (android.view.ViewGroup) findViewById(android.R.id.content);
+        if (content == null) return;
+
+        final android.widget.FrameLayout ov = new android.widget.FrameLayout(this);
+        ov.setBackgroundColor(Palette.BG);
+        ov.setClickable(true);   // sentuhan tidak tembus ke terminal di belakang
+
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setPadding(dp(18), dp(20), dp(18), dp(18));
+
+        // merek
+        LinearLayout brand = new LinearLayout(this);
+        brand.setOrientation(LinearLayout.HORIZONTAL);
+        brand.setGravity(Gravity.CENTER_VERTICAL);
+        android.widget.ImageView logo = new android.widget.ImageView(this);
+        logo.setImageResource(R.drawable.ic_logo_header);
+        brand.addView(logo, new LinearLayout.LayoutParams(dp(40), dp(40)));
+        LinearLayout names = new LinearLayout(this);
+        names.setOrientation(LinearLayout.VERTICAL);
+        names.setPadding(dp(12), 0, 0, 0);
+        TextView nm = new TextView(this);
+        SpannableString nmText = new SpannableString("PayNux");
+        nmText.setSpan(new ForegroundColorSpan(Palette.TEXT), 0, 3, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        nmText.setSpan(new ForegroundColorSpan(ACCENT_RED), 3, 6, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        nm.setText(nmText);
+        nm.setTextSize(20);
+        nm.setTypeface(Typeface.create(monoTypeface(), Typeface.BOLD));
+        nm.setIncludeFontPadding(false);
+        names.addView(nm);
+        setupTitleTv = new TextView(this);
+        setupTitleTv.setTextSize(13);
+        setupTitleTv.setTypeface(monoTypeface());
+        setupTitleTv.setIncludeFontPadding(false);
+        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        tlp.topMargin = dp(4);
+        names.addView(setupTitleTv, tlp);
+        brand.addView(names);
+        col.addView(brand);
+
+        setupSubTv = new TextView(this);
+        setupSubTv.setTextSize(12);
+        setupSubTv.setTextColor(Palette.DIM);
+        setupSubTv.setTypeface(monoTypeface());
+        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        slp.topMargin = dp(12);
+        col.addView(setupSubTv, slp);
+
+        // langkah
+        LinearLayout steps = new LinearLayout(this);
+        steps.setOrientation(LinearLayout.HORIZONTAL);
+        setupDots = new View[SETUP_STEPS.length];
+        setupLabels = new TextView[SETUP_STEPS.length];
+        for (int i = 0; i < SETUP_STEPS.length; i++) {
+            LinearLayout item = new LinearLayout(this);
+            item.setOrientation(LinearLayout.VERTICAL);
+            item.setGravity(Gravity.CENTER_HORIZONTAL);
+            View dot = new View(this);
+            setupDots[i] = dot;
+            item.addView(dot, new LinearLayout.LayoutParams(dp(10), dp(10)));
+            TextView lb = new TextView(this);
+            lb.setText(SETUP_STEPS[i]);
+            lb.setTextSize(10);
+            lb.setTypeface(monoTypeface());
+            lb.setGravity(Gravity.CENTER);
+            lb.setIncludeFontPadding(false);
+            setupLabels[i] = lb;
+            LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            llp.topMargin = dp(5);
+            item.addView(lb, llp);
+            steps.addView(item, new LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        }
+        LinearLayout.LayoutParams stlp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        stlp.topMargin = dp(18);
+        col.addView(steps, stlp);
+
+        // tahap + persen
+        LinearLayout stageRow = new LinearLayout(this);
+        stageRow.setOrientation(LinearLayout.HORIZONTAL);
+        stageRow.setGravity(Gravity.CENTER_VERTICAL);
+        setupStageTv = new TextView(this);
+        setupStageTv.setTextSize(14);
+        setupStageTv.setTextColor(Palette.TEXT);
+        setupStageTv.setTypeface(Typeface.create(monoTypeface(), Typeface.BOLD));
+        setupStageTv.setSingleLine(true);
+        setupStageTv.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        stageRow.addView(setupStageTv, new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        setupPctTv = new TextView(this);
+        setupPctTv.setTextSize(14);
+        setupPctTv.setTextColor(Palette.ORANGE);
+        setupPctTv.setTypeface(Typeface.create(monoTypeface(), Typeface.BOLD));
+        stageRow.addView(setupPctTv);
+        LinearLayout.LayoutParams srlp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        srlp.topMargin = dp(16);
+        col.addView(stageRow, srlp);
+
+        // bar progres (merah -> oranye)
+        setupBar = new android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        setupBar.setMax(1000);
+        android.graphics.drawable.GradientDrawable trackShape = new android.graphics.drawable.GradientDrawable();
+        trackShape.setColor(Palette.LINE);
+        trackShape.setCornerRadius(dp(3));
+        android.graphics.drawable.GradientDrawable fillShape = new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
+                new int[]{Palette.RED_FILL, Palette.ORANGE});
+        fillShape.setCornerRadius(dp(3));
+        android.graphics.drawable.ClipDrawable clip = new android.graphics.drawable.ClipDrawable(
+                fillShape, Gravity.START, android.graphics.drawable.ClipDrawable.HORIZONTAL);
+        android.graphics.drawable.LayerDrawable pld = new android.graphics.drawable.LayerDrawable(
+                new android.graphics.drawable.Drawable[]{trackShape, clip});
+        pld.setId(0, android.R.id.background);
+        pld.setId(1, android.R.id.progress);
+        setupBar.setProgressDrawable(pld);
+        setupBar.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(Palette.ORANGE));
+        LinearLayout.LayoutParams blp3 = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(6));
+        blp3.topMargin = dp(8);
+        col.addView(setupBar, blp3);
+
+        setupSizeTv = new TextView(this);
+        setupSizeTv.setTextSize(11);
+        setupSizeTv.setTextColor(Palette.DIM);
+        setupSizeTv.setTypeface(monoTypeface());
+        setupSizeTv.setSingleLine(true);
+        LinearLayout.LayoutParams szlp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        szlp.topMargin = dp(6);
+        col.addView(setupSizeTv, szlp);
+
+        // mini terminal
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        android.graphics.drawable.GradientDrawable boxBg = new android.graphics.drawable.GradientDrawable();
+        boxBg.setColor(Palette.PANEL_IN);
+        boxBg.setCornerRadius(dp(12));
+        boxBg.setStroke(dp(1), Palette.EDGE);
+        box.setBackground(boxBg);
+        LinearLayout barRow = new LinearLayout(this);
+        barRow.setOrientation(LinearLayout.HORIZONTAL);
+        barRow.setGravity(Gravity.CENTER_VERTICAL);
+        barRow.setPadding(dp(12), dp(8), dp(12), dp(8));
+        int[] dotColors = {Palette.RED_FILL, Palette.AMBER, Palette.GREEN};
+        for (int dc : dotColors) {
+            LinearLayout.LayoutParams dlp2 = new LinearLayout.LayoutParams(dp(8), dp(8));
+            dlp2.rightMargin = dp(6);
+            barRow.addView(setupTitleDot(dc), dlp2);
+        }
+        TextView bt = new TextView(this);
+        bt.setText("setup.log");
+        bt.setTextSize(11);
+        bt.setTextColor(Palette.DIM);
+        bt.setTypeface(monoTypeface());
+        bt.setPadding(dp(4), 0, 0, 0);
+        barRow.addView(bt);
+        box.addView(barRow);
+        View sep = new View(this);
+        sep.setBackgroundColor(Palette.LINE);
+        box.addView(sep, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1));
+        setupLogScroll = new ScrollView(this);
+        setupLogScroll.setVerticalScrollBarEnabled(false);
+        setupLogScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        setupLogTv = new TextView(this);
+        setupLogTv.setTextSize(11);
+        setupLogTv.setTextColor(Palette.TEXT2);
+        setupLogTv.setTypeface(monoTypeface());
+        setupLogTv.setIncludeFontPadding(false);
+        setupLogTv.setLineSpacing(0, 1.15f);
+        setupLogTv.setPadding(dp(12), dp(8), dp(12), dp(8));
+        setupLogScroll.addView(setupLogTv, new ScrollView.LayoutParams(
+                ScrollView.LayoutParams.MATCH_PARENT, ScrollView.LayoutParams.WRAP_CONTENT));
+        box.addView(setupLogScroll, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
+        LinearLayout.LayoutParams bxlp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f);
+        bxlp.topMargin = dp(14);
+        col.addView(box, bxlp);
+
+        // tombol (hanya saat gagal)
+        setupButtons = new LinearLayout(this);
+        setupButtons.setOrientation(LinearLayout.HORIZONTAL);
+        setupButtons.setVisibility(View.GONE);
+        LinearLayout.LayoutParams b1 = new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        b1.rightMargin = dp(6);
+        LinearLayout.LayoutParams b2 = new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        b2.leftMargin = dp(6);
+        setupButtons.addView(setupButton("Copy log", Palette.TEXT, vv -> {
+            StringBuilder sb3 = new StringBuilder();
+            synchronized (setupLines) {
+                for (String l : setupLines) sb3.append(l).append('\n');
+                if (setupPartial.length() > 0) sb3.append(setupPartial).append('\n');
+            }
+            android.content.ClipboardManager cm =
+                    (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            if (cm != null) {
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("PayNux setup log", sb3.toString()));
+            }
+            android.widget.Toast.makeText(this, "Log copied", android.widget.Toast.LENGTH_SHORT).show();
+        }), b1);
+        setupButtons.addView(setupButton("Open terminal", Palette.ORANGE,
+                vv -> dismissSetupOverlay()), b2);
+        LinearLayout.LayoutParams sblp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        sblp.topMargin = dp(12);
+        col.addView(setupButtons, sblp);
+
+        ov.addView(col, new android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
+        content.addView(ov, new android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
+        setupOverlay = ov;
+        renderSetup();
+    }
+
+    private void appendSetupLine(SpannableStringBuilder sb, String l) {
+        int c;
+        if (l.startsWith("[+]")) c = Palette.GREEN;
+        else if (l.startsWith("[!]")) c = Palette.AMBER;
+        else if (l.startsWith("[*]")) c = Palette.DIM;
+        else if (l.startsWith("[PAYNUX ERROR]")) c = Palette.RED;
+        else c = Palette.TEXT2;
+        int st = sb.length();
+        sb.append(l).append('\n');
+        sb.setSpan(new ForegroundColorSpan(c), st, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+    }
+
+    private void renderSetup() {
+        if (setupOverlay == null || setupDots == null || setupLogTv == null) return;
+        final int step = setupStep;
+        final boolean failed = setupFailed;
+
+        for (int i = 0; i < setupDots.length; i++) {
+            int dc = i < step ? Palette.GREEN
+                    : (i == step ? (failed ? Palette.RED : Palette.ORANGE) : Palette.LINE);
+            android.graphics.drawable.GradientDrawable g = new android.graphics.drawable.GradientDrawable();
+            g.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+            g.setColor(dc);
+            setupDots[i].setBackground(g);
+            setupLabels[i].setTextColor(i <= step ? Palette.TEXT : Palette.DIM);
+        }
+
+        setupTitleTv.setText(failed ? "Setup failed" : "Setting up Ubuntu 24.04");
+        setupTitleTv.setTextColor(failed ? Palette.RED : Palette.ORANGE);
+        setupSubTv.setText(failed
+                ? "Check the log below, then open the terminal."
+                : "First run only. This can take a few minutes.");
+        setupStageTv.setText(setupStageText);
+
+        long d = setupDone;
+        long t = setupTotal;
+        String pct = "";
+        String size = "";
+        if (step >= SETUP_STEPS.length) {
+            setupBar.setIndeterminate(false);
+            setupBar.setProgress(1000);
+            pct = "100%";
+        } else if (failed) {
+            setupBar.setIndeterminate(false);
+        } else if (t > 0) {
+            setupBar.setIndeterminate(false);
+            setupBar.setProgress((int) Math.min(1000L, d * 1000L / t));
+            pct = (d * 100L / t) + "%";
+            size = String.format(java.util.Locale.US, "%.1f / %.1f MB", d / 1048576.0, t / 1048576.0);
+        } else {
+            setupBar.setIndeterminate(true);
+            if (d > 0) {
+                size = setupStageText.startsWith("Downloading")
+                        ? String.format(java.util.Locale.US, "%.1f MB", d / 1048576.0)
+                        : d + " entries";
+            }
+        }
+        setupPctTv.setText(pct);
+        setupSizeTv.setText(size);
+        setupButtons.setVisibility(failed ? View.VISIBLE : View.GONE);
+
+        SpannableStringBuilder sb = new SpannableStringBuilder();
+        synchronized (setupLines) {
+            for (String l : setupLines) appendSetupLine(sb, l);
+            if (setupPartial.length() > 0) appendSetupLine(sb, setupPartial.toString());
+        }
+        setupLogTv.setText(sb);
+        setupLogScroll.post(() -> {
+            View ch = setupLogScroll.getChildAt(0);
+            if (ch != null) {
+                setupLogScroll.scrollTo(0, Math.max(0, ch.getHeight() - setupLogScroll.getHeight()));
+            }
+        });
+    }
+
     /** Renders SetupManager progress in the terminal (one updating line). */
     private static final class SetupUi implements SetupListener {
         private String stage = "";
@@ -4179,6 +4657,7 @@ public class MainActivity extends Activity {
         public void onStage(String s) {
             closeLine();
             stage = s;
+            setupSetStage(s);
             appendOutput("[*] " + s + "...\n");
         }
 
@@ -4188,6 +4667,7 @@ public class MainActivity extends Activity {
             boolean last = total > 0 && done >= total;
             if (now - lastMs < 400 && !last) return;
             lastMs = now;
+            setupSetProgress(done, total);
             String text;
             if (total > 0) {
                 text = String.format(java.util.Locale.US,
@@ -4336,6 +4816,7 @@ public class MainActivity extends Activity {
 
         try {
 
+            setupSetStage("Verifying PRoot");
             appendOutput("[*] Verifying PRoot...\n");
 
             Map<String, String> env = new HashMap<>();
@@ -5162,6 +5643,7 @@ public class MainActivity extends Activity {
         // START UBUNTU (PTY dulu; gagal -> pipe. Argumen proot/env
         // TIDAK berubah — hanya transport I/O yang dipilih.)
 
+        if (setupActive) setupSetStage("Starting shell");
         bootLog("[*] Starting shell...\n\n");
 
         sc.ts = new TerminalSession(sc.emu, callbackFor(sc));
@@ -5177,6 +5659,7 @@ public class MainActivity extends Activity {
             }
         }
         sc.ready = true;
+        if (sc == active) setupFinish();
         if (sc == active) shellReady = true;
         if (sc.ts.isPtyMode()) {
             bootLog("[+] PTY active - interactive shell ready.\n\n");
