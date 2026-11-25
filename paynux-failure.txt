@@ -1,0 +1,116 @@
+--------- beginning of main
+11-03 14:22:22.274 20058 20058 I ocketdev.paynux: Late-enabling -Xcheck:jni
+11-03 14:22:22.292 20058 20058 I ocketdev.paynux: Using generational CollectorTypeCC GC.
+11-03 14:22:22.300 20058 20058 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+11-03 14:22:22.303 20058 20058 D ActivityThread: setConscryptValidator
+11-03 14:22:22.303 20058 20058 D ActivityThread: setConscryptValidator - put
+11-03 14:22:22.317 20058 20058 D CompatibilityChangeReporter: Compat change id reported: 171979766; UID 10423; state: ENABLED
+11-03 14:22:22.424 20058 20058 D nativeloader: Configuring clns-4 for other apk /data/app/~~3GfsdIR0liLoSG7oQQ7l1g==/com.pocketdev.paynux-loOgEDD_LRsEqynwMCsxPA==/base.apk. target_sdk_version=36, uses_libraries=, library_path=/data/app/~~3GfsdIR0liLoSG7oQQ7l1g==/com.pocketdev.paynux-loOgEDD_LRsEqynwMCsxPA==/lib/arm64:/data/app/~~3GfsdIR0liLoSG7oQQ7l1g==/com.pocketdev.paynux-loOgEDD_LRsEqynwMCsxPA==/base.apk!/lib/arm64-v8a, permitted_path=/data:/mnt/expand:/data/user/0/com.pocketdev.paynux
+11-03 14:22:22.430 20058 20058 D nativeloader: Load libframework-connectivity-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity.jar: ok
+11-03 14:22:22.432 20058 20058 V GraphicsEnvironment: ANGLE Developer option for 'com.pocketdev.paynux' set to: 'default'
+11-03 14:22:22.432 20058 20058 V GraphicsEnvironment: ANGLE GameManagerService for com.pocketdev.paynux: false
+11-03 14:22:22.433 20058 20058 V GraphicsEnvironment: App is not on the allowlist for updatable production driver.
+11-03 14:22:22.434 20058 20058 D NetworkSecurityConfig: Using Network Security Config from resource network_security_config debugBuild: true
+11-03 14:22:22.466 20058 20058 D NetworkSecurityConfig: Using Network Security Config from resource network_security_config debugBuild: true
+11-03 14:22:22.483 20058 20088 D OpenGLRenderer: RenderThread::requireGlContext()
+11-03 14:22:22.483 20058 20088 I AdrenoGLES-0: QUALCOMM build                   : db7e7066a2, I1fad33e957
+11-03 14:22:22.483 20058 20088 I AdrenoGLES-0: Build Date                       : 05/11/25
+11-03 14:22:22.483 20058 20088 I AdrenoGLES-0: OpenGL ES Shader Compiler Version: EV031.32.02.10
+11-03 14:22:22.483 20058 20088 I AdrenoGLES-0: Local Branch                     : 
+11-03 14:22:22.483 20058 20088 I AdrenoGLES-0: Remote Branch                    : refs/tags/AU_LINUX_ANDROID_LA.UM.9.12.11.00.00.582.697
+11-03 14:22:22.483 20058 20088 I AdrenoGLES-0: Remote Branch                    : NONE
+11-03 14:22:22.483 20058 20088 I AdrenoGLES-0: Reconstruct Branch               : NOTHING
+11-03 14:22:22.483 20058 20088 I AdrenoGLES-0: Build Config                     : S P 10.0.7 AArch64
+11-03 14:22:22.483 20058 20088 I AdrenoGLES-0: Driver Path                      : /vendor/lib64/egl/libGLESv2_adreno.so
+11-03 14:22:22.487 20058 20088 I AdrenoGLES-0: PFP: 0x016dd093, ME: 0x00000000
+11-03 14:22:22.493 20058 20088 D OpenGLRenderer: RenderThread::setGrContext()
+11-03 14:22:22.516 20058 20058 I DecorView: [INFO] isPopOver=false config=true
+11-03 14:22:22.516 20058 20058 I DecorView: updateCaptionType: isFloating=false isApplication=true hasWindowDecorCaption=false this=DecorView@16bd57e[]
+11-03 14:22:22.516 20058 20058 D DecorView: setCaptionType = 0, this = DecorView@16bd57e[]
+11-03 14:22:22.518 20058 20058 I DecorView: getCurrentDensityDpi: from real metrics. densityDpi=420 msg=resources_loaded
+11-03 14:22:22.518 20058 20058 I DecorView: setWindowBackground: isPopOver=false color=ff121212 d=android.graphics.drawable.ColorDrawable@d40732c
+11-03 14:22:22.540 20058 20096 D PayNuxTerminal: Initializing PRootManager...
+11-03 14:22:22.542 20058 20096 D PayNuxTerminal: All native library dependencies verified
+11-03 14:22:22.542 20058 20096 D PayNuxTerminal: Using native proot from: /data/app/~~3GfsdIR0liLoSG7oQQ7l1g==/com.pocketdev.paynux-loOgEDD_LRsEqynwMCsxPA==/lib/arm64/libproot.so
+11-03 14:22:22.543 20058 20096 D PayNuxTerminal: Testing PRoot executable: /data/app/~~3GfsdIR0liLoSG7oQQ7l1g==/com.pocketdev.paynux-loOgEDD_LRsEqynwMCsxPA==/lib/arm64/libproot.so
+11-03 14:22:22.543 20058 20058 I MSHandlerLifeCycle: check: return. pkg=com.pocketdev.paynux parent=null callers=com.android.internal.policy.DecorView.setVisibility:4412 android.app.ActivityThread.handleResumeActivity:5476 android.app.servertransaction.ResumeActivityItem.execute:54 android.app.servertransaction.ActivityTransactionItem.execute:45 android.app.servertransaction.TransactionExecutor.executeLifecycleState:176 
+11-03 14:22:22.543 20058 20058 I MSHandlerLifeCycle: removeMultiSplitHandler: no exist. decor=DecorView@16bd57e[]
+11-03 14:22:22.549 20058 20096 W PayNuxTerminal: PRoot test failed: exitCode=1, output=CANNOT LINK EXECUTABLE "/data/app/~~3GfsdIR0liLoSG7oQQ7l1g==/com.pocketdev.paynux-loOgEDD_LRsEqynwMCsxPA==/lib/arm64/libproot.so": library "libtalloc.so" not found: needed by main executable
+11-03 14:22:22.549 20058 20088 D NativeCustomFrequencyManager: [NativeCFMS] BpCustomFrequencyManager::BpCustomFrequencyManager()
+11-03 14:22:22.551 20058 20096 E PayNuxTerminal: PRoot linker error - missing native dependencies: CANNOT LINK EXECUTABLE "/data/app/~~3GfsdIR0liLoSG7oQQ7l1g==/com.pocketdev.paynux-loOgEDD_LRsEqynwMCsxPA==/lib/arm64/libproot.so": library "libtalloc.so" not found: needed by main executable
+11-03 14:22:22.551 20058 20096 D PayNuxTerminal: PRoot test result: false
+11-03 14:22:22.555 20058 20058 D InsetsController: onStateChanged: InsetsState: {mDisplayFrame=Rect(0, 0 - 1080, 2316), mDisplayCutout=DisplayCutout{insets=Rect(0, 67 - 0, 0) waterfall=Insets{left=0, top=0, right=0, bottom=0} boundingRect={Bounds=[Rect(0, 0 - 0, 0), Rect(694, 0 - 746, 67), Rect(0, 0 - 0, 0), Rect(0, 0 - 0, 0)]} cutoutPathParserInfo={CutoutPathParserInfo{displayWidth=1080 displayHeight=2316 physicalDisplayWidth=1440 physicalDisplayHeight=3088 density={2.625} cutoutSpec={M 0,0 H -10 V 25.42857142857143 H 10 V 0 H 0 Z @dp} rotation={0} scale={1.0} physicalPixelDisplaySizeRatio={1.0}}}}, mRoundedCorners=RoundedCorners{[RoundedCorner{position=TopLeft, radius=18, center=Point(18, 18)}, RoundedCorner{position=TopRight, radius=18, center=Point(1062, 18)}, RoundedCorner{position=BottomRight, radius=18, center=Point(1062, 2298)}, RoundedCorner{position=BottomLeft, radius=18, center=Point(18, 2298)}]}  mRoundedCornerFrame=Rect(0, 0 - 1080, 2316), mPrivacyIndicatorBounds=PrivacyIndicatorBounds {static bounds=Rect(964, 0 - 1080, 67) rotation=0}, mSources= { InsetsSource: {mType=ITYPE_STATUS_BAR, mFrame=[0,0][1080,67], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_NAVIGATION_BAR, mFrame=[0,2190][1080,2316], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_LEFT_GESTURES, mFrame=[0,0][0,2316], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_RIGHT_GESTURES, mFrame=[1080,0][1080,2316], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_TOP_MANDATORY_GESTURES, mFrame=[0,0][1080,99], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_BOTTOM_MANDATORY_GESTURES, mFrame=[0,2190][1080,2316], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_LEFT_DISPLAY_CUTOUT, mFrame=[0,0][-100000,2316], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_TOP_DISPLAY_CUTOUT, mFrame=[0,0][1080,67], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_RIGHT_DISPLAY_CUTOUT, mFrame=[100000,0][1080,2316], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_BOTTOM_DISPLAY_CUTOUT, mFrame=[0,100000][1080,2316], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_TOP_TAPPABLE_ELEMENT, mFrame=[0,0][1080,67], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_BOTTOM_TAPPABLE_ELEMENT, mFrame=[0,2190][1080,2316], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_IME, mFrame=[0,0][0,0], mVisibleFrame=[0,1325][1080,2316], mVisible=false, mInsetsRoundedCornerFrame=false} } host=com.pocketdev.paynux/com.pocketdev.paynux.MainActivity from=android.view.ViewRootImpl.setView:1732
+11-03 14:22:22.556 20058 20058 I ViewRootImpl@7014fe1[MainActivity]: setView = com.android.internal.policy.DecorView@16bd57e TM=true
+11-03 14:22:22.558 20058 20058 I MSHandlerLifeCycle: removeMultiSplitHandler: no exist. decor=DecorView@16bd57e[MainActivity]
+11-03 14:22:22.790 20058 20058 I ViewRootImpl@7014fe1[MainActivity]: performTraversals params={(0,0)(fillxfill) sim={adjust=resize forwardNavigation} ty=BASE_APPLICATION wanim=0x1030309
+11-03 14:22:22.790 20058 20058 I ViewRootImpl@7014fe1[MainActivity]:   fl=81810100
+11-03 14:22:22.790 20058 20058 I ViewRootImpl@7014fe1[MainActivity]:   pfl=12020040
+11-03 14:22:22.790 20058 20058 I ViewRootImpl@7014fe1[MainActivity]:   bhv=DEFAULT
+11-03 14:22:22.790 20058 20058 I ViewRootImpl@7014fe1[MainActivity]:   fitSides= naviIconColor=0}
+11-03 14:22:22.791 20058 20058 I ViewRootImpl@7014fe1[MainActivity]: performTraversals mFirst=true windowShouldResize=true viewVisibilityChanged=false mForceNextWindowRelayout=false params={(0,0)(fillxfill) sim={adjust=resize forwardNavigation} ty=BASE_APPLICATION wanim=0x1030309
+11-03 14:22:22.791 20058 20058 I ViewRootImpl@7014fe1[MainActivity]:   fl=81810100
+11-03 14:22:22.791 20058 20058 I ViewRootImpl@7014fe1[MainActivity]:   pfl=12020040
+11-03 14:22:22.791 20058 20058 I ViewRootImpl@7014fe1[MainActivity]:   bhv=DEFAULT
+11-03 14:22:22.791 20058 20058 I ViewRootImpl@7014fe1[MainActivity]:   fitSides= naviIconColor=0}
+11-03 14:22:22.797 20058 20058 I ViewRootImpl@7014fe1[MainActivity]: updateBlastSurfaceIfNeeded mBlastBufferQueue=null isSameSurfaceControl=false
+11-03 14:22:22.797 20058 20058 E BufferQueueProducer: Unable to open libpenguin.so: dlopen failed: library "libpenguin.so" not found.
+11-03 14:22:22.797 20058 20058 I BLASTBufferQueue: new BLASTBufferQueue, mName= ViewRootImpl@7014fe1[MainActivity] mNativeObject= 0xb400006e68188bb0 sc.mNativeObject= 0xb400006df81a6e70 caller= android.view.ViewRootImpl.updateBlastSurfaceIfNeeded:2909 android.view.ViewRootImpl.relayoutWindow:9847 android.view.ViewRootImpl.performTraversals:3884 android.view.ViewRootImpl.doTraversal:3116 android.view.ViewRootImpl$TraversalRunnable.run:10885 android.view.Choreographer$CallbackRecord.run:1301 android.view.Choreographer$CallbackRecord.run:1309 android.view.Choreographer.doCallbacks:923 android.view.Choreographer.doFrame:852 android.view.Choreographer$FrameDisplayEventReceiver.run:1283 
+11-03 14:22:22.797 20058 20058 I BLASTBufferQueue: update, w= 1080 h= 2316 mName = ViewRootImpl@7014fe1[MainActivity] mNativeObject= 0xb400006e68188bb0 sc.mNativeObject= 0xb400006df81a6e70 format= -1 caller= android.graphics.BLASTBufferQueue.<init>:84 android.view.ViewRootImpl.updateBlastSurfaceIfNeeded:2909 android.view.ViewRootImpl.relayoutWindow:9847 android.view.ViewRootImpl.performTraversals:3884 android.view.ViewRootImpl.doTraversal:3116 android.view.ViewRootImpl$TraversalRunnable.run:10885 
+11-03 14:22:22.798 20058 20058 I ViewRootImpl@7014fe1[MainActivity]: Relayout returned: old=(0,0,1080,2316) new=(0,0,1080,2316) req=(1080,2316)0 dur=6 res=0x3 s={true 0xb400006ef8178850} ch=true seqId=0
+11-03 14:22:22.798 20058 20058 I ViewRootImpl@7014fe1[MainActivity]: mThreadedRenderer.initialize() mSurface={isValid=true 0xb400006ef8178850} hwInitialized=true
+11-03 14:22:22.804 20058 20088 D OpenGLRenderer: eglCreateWindowSurface
+11-03 14:22:22.809 20058 20058 I ViewRootImpl@7014fe1[MainActivity]: reportNextDraw android.view.ViewRootImpl.performTraversals:4438 android.view.ViewRootImpl.doTraversal:3116 android.view.ViewRootImpl$TraversalRunnable.run:10885 android.view.Choreographer$CallbackRecord.run:1301 android.view.Choreographer$CallbackRecord.run:1309 
+11-03 14:22:22.809 20058 20058 I ViewRootImpl@7014fe1[MainActivity]: Setup new sync id=0
+11-03 14:22:22.809 20058 20058 I ViewRootImpl@7014fe1[MainActivity]: Setting syncFrameCallback
+11-03 14:22:22.810 20058 20058 I ViewRootImpl@7014fe1[MainActivity]: registerCallbacksForSync syncBuffer=false
+11-03 14:22:22.815 20058 20105 I ViewRootImpl@7014fe1[MainActivity]: Received frameDrawingCallback syncResult=0 frameNum=1.
+11-03 14:22:22.816 20058 20105 I ViewRootImpl@7014fe1[MainActivity]: Setting up sync and frameCommitCallback
+11-03 14:22:22.821 20058 20088 I BLASTBufferQueue: [ViewRootImpl@7014fe1[MainActivity]#0](f:0,a:0) onFrameAvailable the first frame is available
+11-03 14:22:22.821 20058 20088 I ViewRootImpl@7014fe1[MainActivity]: Received frameCommittedCallback lastAttemptedDrawFrameNum=1 didProduceBuffer=true
+11-03 14:22:22.822 20058 20088 D OpenGLRenderer: CFMS:: SetUp Pid : 20058    Tid : 20088
+11-03 14:22:22.823 20058 20088 W Parcel  : Expecting binder but got null!
+11-03 14:22:22.823 20058 20058 I ViewRootImpl@7014fe1[MainActivity]: onSyncComplete
+11-03 14:22:22.823 20058 20058 I ViewRootImpl@7014fe1[MainActivity]: setupSync seqId=0 mSyncId=0 fn=1 caller=android.view.ViewRootImpl$$ExternalSyntheticLambda11.accept:6 android.window.SurfaceSyncer.lambda$setupSync$1$android-window-SurfaceSyncer:128 android.window.SurfaceSyncer$$ExternalSyntheticLambda1.accept:8 android.window.SurfaceSyncer$SyncSet.checkIfSyncIsComplete:382 android.window.SurfaceSyncer$SyncSet.markSyncReady:359 android.window.SurfaceSyncer.markSyncReady:151 android.view.ViewRootImpl.performTraversals:4503 
+11-03 14:22:22.823 20058 20058 I ViewRootImpl@7014fe1[MainActivity]: reportDrawFinished seqId=0 mSyncId=-1 fn=1 mSurfaceChangedTransaction=0xb400006e28176b10
+11-03 14:22:22.884 20058 20058 I ViewRootImpl@7014fe1[MainActivity]: MSG_WINDOW_FOCUS_CHANGED 1 0
+11-03 14:22:22.884 20058 20058 I ViewRootImpl@7014fe1[MainActivity]: mThreadedRenderer.initializeIfNeeded()#2 mSurface={isValid=true 0xb400006ef8178850}
+11-03 14:22:22.885 20058 20058 D InputMethodManager: startInputInner - Id : 0
+11-03 14:22:22.885 20058 20058 I InputMethodManager: startInputInner - mService.startInputOrWindowGainedFocus
+11-03 14:22:22.890 20058 20058 D InputMethodManager: startInputInner - Id : 0
+11-03 14:22:22.992 20058 20063 I ocketdev.paynux: Compiler allocated 6246KB to compile void android.view.ViewRootImpl.performTraversals()
+11-03 14:22:23.708 20058 20058 I ViewRootImpl@7014fe1[MainActivity]: ViewPostIme pointer 0
+11-03 14:22:23.790 20058 20058 I ViewRootImpl@7014fe1[MainActivity]: ViewPostIme pointer 1
+11-03 14:22:24.223 20058 20096 W FeatureFlagsImplExport: java.lang.NoClassDefFoundError: Class not found using the boot class loader; no stack trace available
+11-03 14:22:28.563 20058 20133 D ProfileInstaller: Installing profile for com.pocketdev.paynux
+11-03 14:22:29.723 20058 20058 I Choreographer: Skipped 49 frames!  The application may be doing too much work on its main thread.
+11-03 14:22:31.513 20058 20063 I ocketdev.paynux: Compiler allocated 4499KB to compile java.lang.Object com.pocketdev.paynux.util.TarExtractor$extract$2.invokeSuspend(java.lang.Object)
+11-03 14:22:31.777 20058 20063 I ocketdev.paynux: Compiler allocated 4664KB to compile java.lang.Object com.pocketdev.paynux.util.TarExtractor$extract$2.invokeSuspend(java.lang.Object)
+11-03 14:22:38.331 20058 20096 W PayNux/TarExtractor: Failed to create hard link usr/bin/perl5.38.2 -> usr/bin/perl, attempting copy fallback: /data/data/com.pocketdev.paynux/files/stage/ubuntu-24.04-arm64/usr/bin/perl5.38.2 -> /data/data/com.pocketdev.paynux/files/stage/ubuntu-24.04-arm64/usr/bin/perl
+11-03 14:22:38.353 20058 20096 W PayNux/TarExtractor: Failed to create hard link usr/bin/uncompress -> usr/bin/gunzip, attempting copy fallback: /data/data/com.pocketdev.paynux/files/stage/ubuntu-24.04-arm64/usr/bin/uncompress -> /data/data/com.pocketdev.paynux/files/stage/ubuntu-24.04-arm64/usr/bin/gunzip
+11-03 14:22:38.364 20058 20058 D PayNux/RootfsSetup: Setting up rootfs at: /data/user/0/com.pocketdev.paynux/files/stage/ubuntu-24.04-arm64
+11-03 14:22:38.365 20058 20058 E PayNux/RootfsSetup: Failed to create dev directory (mkdirs returned false, exists=true, isDirectory=true)
+11-03 14:22:38.365 20058 20058 E PayNux/RootfsSetup: Rootfs setup failed: Failed to create critical directory: dev
+11-03 14:22:38.365 20058 20058 E PayNux/RootfsSetup: java.io.IOException: Failed to create critical directory: dev
+11-03 14:22:38.365 20058 20058 E PayNux/RootfsSetup: 	at com.pocketdev.paynux.util.RootfsSetup.setupRootfs(RootfsSetup.kt:255)
+11-03 14:22:38.365 20058 20058 E PayNux/RootfsSetup: 	at com.pocketdev.paynux.data.repository.DistroRepositoryImpl$installDistro$2.invokeSuspend(DistroRepositoryImpl.kt:357)
+11-03 14:22:38.365 20058 20058 E PayNux/RootfsSetup: 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+11-03 14:22:38.365 20058 20058 E PayNux/RootfsSetup: 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:108)
+11-03 14:22:38.365 20058 20058 E PayNux/RootfsSetup: 	at android.os.Handler.handleCallback(Handler.java:942)
+11-03 14:22:38.365 20058 20058 E PayNux/RootfsSetup: 	at android.os.Handler.dispatchMessage(Handler.java:99)
+11-03 14:22:38.365 20058 20058 E PayNux/RootfsSetup: 	at android.os.Looper.loopOnce(Looper.java:226)
+11-03 14:22:38.365 20058 20058 E PayNux/RootfsSetup: 	at android.os.Looper.loop(Looper.java:313)
+11-03 14:22:38.365 20058 20058 E PayNux/RootfsSetup: 	at android.app.ActivityThread.main(ActivityThread.java:8762)
+11-03 14:22:38.365 20058 20058 E PayNux/RootfsSetup: 	at java.lang.reflect.Method.invoke(Native Method)
+11-03 14:22:38.365 20058 20058 E PayNux/RootfsSetup: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:604)
+11-03 14:22:38.365 20058 20058 E PayNux/RootfsSetup: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:1067)
+11-03 14:22:42.370 20058 20058 I ViewRootImpl@7014fe1[MainActivity]: MSG_WINDOW_FOCUS_CHANGED 0 0
+11-03 14:22:42.756 20058 20058 I ViewRootImpl@7014fe1[MainActivity]: handleAppVisibility mAppVisible = true visible = false
+11-03 14:22:42.759 20058 20088 D OpenGLRenderer: setSurface called with nullptr
+11-03 14:22:42.759 20058 20088 D OpenGLRenderer: setSurface() destroyed EGLSurface
+11-03 14:22:42.759 20058 20088 D OpenGLRenderer: destroyEglSurface
+11-03 14:22:42.761 20058 20058 I ViewRootImpl@7014fe1[MainActivity]: performTraversals mFirst=false windowShouldResize=false viewVisibilityChanged=true mForceNextWindowRelayout=false params=null
+11-03 14:22:42.765 20058 20058 I ViewRootImpl@7014fe1[MainActivity]: Relayout returned: old=(0,0,1080,2316) new=(0,0,1080,2316) req=(1080,2316)8 dur=4 res=0x2 s={false 0x0} ch=true seqId=0
+11-03 14:22:42.790 20058 20058 I ViewRootImpl@7014fe1[MainActivity]: stopped(true) old = false
+11-03 14:22:42.791 20058 20058 I ViewRootImpl@7014fe1[MainActivity]: WindowStopped on com.pocketdev.paynux/com.pocketdev.paynux.MainActivity set to true
+11-03 14:22:42.811 20058 20058 I MSHandlerLifeCycle: removeMultiSplitHandler: no exist. decor=DecorView@16bd57e[MainActivity]
+11-03 14:22:42.836 20058 20058 D InputTransport: Input channel destroyed: 'ClientS', fd=116

@@ -72,6 +72,29 @@ public class MainActivity extends Activity {
     private LinearLayout keyBar;
 
     /** Satu sesi terminal: emulator + shell sendiri. */
+    /** TextView terminal: tidak boleh men-scroll dirinya sendiri (itu yang membuat teks goyang saat disentuh). */
+    private static final class PinnedTextView extends TextView {
+        PinnedTextView(android.content.Context c) { super(c); }
+        @Override public void scrollTo(int x, int y) { super.scrollTo(0, 0); }
+    }
+
+    /** ScrollView terminal: abaikan lompatan otomatis (fokus/kursor) selama jari menyentuh layar. */
+    private static final class SteadyScrollView extends ScrollView {
+        private boolean touching;
+        SteadyScrollView(android.content.Context c) { super(c); }
+        @Override public boolean dispatchTouchEvent(android.view.MotionEvent ev) {
+            int a = ev.getActionMasked();
+            if (a == android.view.MotionEvent.ACTION_DOWN) touching = true;
+            boolean r = super.dispatchTouchEvent(ev);
+            if (a == android.view.MotionEvent.ACTION_UP
+                    || a == android.view.MotionEvent.ACTION_CANCEL) touching = false;
+            return r;
+        }
+        @Override protected int computeScrollDeltaToGetChildRectOnScreen(android.graphics.Rect rect) {
+            return touching ? 0 : super.computeScrollDeltaToGetChildRectOnScreen(rect);
+        }
+    }
+
     private static final class Sess {
         final int id;
         TerminalEmulator emu;
@@ -100,7 +123,7 @@ public class MainActivity extends Activity {
     private int maxDecorHeightPx = -1; // cadangan deteksi IME (API < 30)
 
     // ---- geometri toolbar (cukup ubah di sini) ----
-    static final int KEY_H_DP    = 32;   // tinggi satu baris toolbar
+    static final int KEY_H_DP    = 38;   // tinggi satu baris toolbar
     static final int SWIPE_UP_DP = 24;   // geser ke atas > ini = aksi kedua
 
     // emulator/session = penunjuk ke sesi AKTIF (dipakai kode lama)
@@ -150,7 +173,7 @@ public class MainActivity extends Activity {
     private final boolean[] ctrlMode = {false};
     private final boolean[] altMode = {false};
 
-    private static final int CURSOR_COLOR = Color.rgb(180, 200, 255);
+    private static final int CURSOR_COLOR = Palette.ORANGE;
 
     // ============================================================
     // RUNTIME PATHS
@@ -663,13 +686,13 @@ public class MainActivity extends Activity {
 
         themeIdx = themeIndex();
         int BG       = THEMES[themeIdx][0];
-        int BG2      = Color.rgb(  18,  18,  18);
+        int BG2      = Palette.PANEL;
         int BG3      = THEMES[themeIdx][1];
-        int GREEN    = Color.rgb(  87, 201, 120);
-        int YELLOW   = Color.rgb( 229, 192,  82);
-        int CYAN     = Color.rgb(  51, 187, 200);
+        int GREEN    = Palette.GREEN;
+        int YELLOW   = Palette.AMBER;
+        int CYAN     = Palette.ORANGE;
         int FG       = THEMES[themeIdx][2];
-        int GRAY     = Color.rgb( 128, 128, 128);
+        int GRAY     = Palette.DIM;
 
         SharedPreferences prefs =
                 getSharedPreferences("paynux_ui", MODE_PRIVATE);
@@ -684,7 +707,7 @@ public class MainActivity extends Activity {
         // SCROLLBACK (output lama, bisa dipilih/disinpan)
         // --------------------------------------------------------
 
-        scrollbackView = new TextView(this);
+        scrollbackView = new PinnedTextView(this);
         scrollbackView.setTextColor(FG);
         scrollbackView.setTextSize(fontSizeSp);
         scrollbackView.setTypeface(monoTypeface());
@@ -703,7 +726,7 @@ public class MainActivity extends Activity {
         // program full-screen seperti vim/top tetap presisi)
         // --------------------------------------------------------
 
-        screenView = new TextView(this);
+        screenView = new PinnedTextView(this);
         screenView.setTextColor(FG);
         screenView.setTextSize(fontSizeSp);
         screenView.setTypeface(monoTypeface());
@@ -722,9 +745,10 @@ public class MainActivity extends Activity {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
 
-        terminalScroll = new ScrollView(this);
+        terminalScroll = new SteadyScrollView(this);
         terminalScroll.setBackgroundColor(BG);
         terminalScroll.setFillViewport(true);
+        terminalScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);   // tanpa efek regang di tepi
         terminalScroll.addView(inner, new ScrollView.LayoutParams(
                 ScrollView.LayoutParams.MATCH_PARENT,
                 ScrollView.LayoutParams.WRAP_CONTENT));
@@ -797,111 +821,92 @@ public class MainActivity extends Activity {
         keyBar.setOrientation(LinearLayout.VERTICAL);
         keyBar.setBackgroundColor(BG3);
 
-        // garis tipis pemisah di atas toolbar
-        View topLine = new View(this);
-        topLine.setBackgroundColor(Color.rgb(60, 60, 60));
-        keyBar.addView(topLine, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 1));
+        keyBar.setPadding(dp(6), dp(6), dp(6), dp(4));
 
-        // --- isi toolbar dari konfigurasi (default 2x7 seperti sebelumnya) ---
-        for (java.util.List<String> tokens : loadToolbarRows()) {
-            LinearLayout row = newToolbarRow();
-            for (String t : tokens) addToolbarToken(row, t);
-            keyBar.addView(row, new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, dp(KEY_H_DP)));
-        }
+        // --- panel extra-keys: tiap 2 baris konfigurasi = 1 halaman (geser) ---
+        buildKeyPanel(keyBar);
 
         // --------------------------------------------------------
         // ASSEMBLE
         // --------------------------------------------------------
 
         // --------------------------------------------------------
-        // HEADER (48dp): logo, judul PayNux, tagline. Lonceng dan menu
-        // titik tiga masih dekoratif (belum berfungsi).
+        // HEADER (48dp): tombol sidebar, judul, lalu chip aksi yang selalu
+        // terlihat: copy log, paste, hapus log, enter, keyboard. Aksi lain
+        // (sesi baru, tutup sesi, reset, notifikasi, tema, about) ada di sidebar.
         // --------------------------------------------------------
 
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
         header.setBackgroundColor(THEMES[themeIdx][3]);
-        header.setPadding(dp(12), 0, dp(4), 0);
+        header.setPadding(dp(4), 0, dp(8), 0);
 
-        android.widget.ImageView logo = new android.widget.ImageView(this);
-        logo.setImageResource(R.drawable.ic_logo_header);
-        header.addView(logo, new LinearLayout.LayoutParams(dp(30), dp(30)));
-
-        LinearLayout titleBox = new LinearLayout(this);
-        titleBox.setOrientation(LinearLayout.VERTICAL);
-        titleBox.setGravity(Gravity.CENTER_VERTICAL);
-        titleBox.setPadding(dp(10), 0, 0, 0);
+        android.widget.ImageView menuBtn = headerIcon(R.drawable.ic_menu);
+        menuBtn.setColorFilter(Palette.TEXT);
+        menuBtn.setContentDescription("Menu");
+        menuBtn.setOnClickListener(v -> openDrawer());
+        header.addView(menuBtn, new LinearLayout.LayoutParams(dp(44), dp(44)));
 
         TextView title = new TextView(this);
-        SpannableString titleText = new SpannableString("PayNux");
-        titleText.setSpan(new ForegroundColorSpan(Color.WHITE), 0, 3,
+        SpannableString titleText = new SpannableString("> PayNux");
+        titleText.setSpan(new ForegroundColorSpan(Palette.ORANGE), 0, 1,
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        titleText.setSpan(new ForegroundColorSpan(ACCENT_RED), 3, 6,
+        titleText.setSpan(new ForegroundColorSpan(Palette.TEXT), 2, 5,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        titleText.setSpan(new ForegroundColorSpan(ACCENT_RED), 5, 8,
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         title.setText(titleText);
         title.setTextSize(17);
-        title.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        title.setTypeface(Typeface.create(monoTypeface(), Typeface.BOLD));
         title.setIncludeFontPadding(false);
-        titleBox.addView(title, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
+        title.setSingleLine(true);
+        header.addView(title, new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
 
-        TextView tagline = new TextView(this);
-        tagline.setText("Linux On Your Pocket");
-        tagline.setTextColor(Color.rgb(161, 161, 170));
-        tagline.setTextSize(10);
-        tagline.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
-        tagline.setIncludeFontPadding(false);
-        titleBox.addView(tagline, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
-
-        header.addView(titleBox, new LinearLayout.LayoutParams(
-                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
-        android.widget.FrameLayout bellBox = new android.widget.FrameLayout(this);
-        bellBox.addView(headerIcon(R.drawable.ic_bell),
-                new android.widget.FrameLayout.LayoutParams(
-                        android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
-                        android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
-        bellBadge = new TextView(this);
-        bellBadge.setTextColor(Color.WHITE);
-        bellBadge.setTextSize(9);
-        bellBadge.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-        bellBadge.setIncludeFontPadding(false);
-        bellBadge.setGravity(Gravity.CENTER);
-        bellBadge.setMinWidth(dp(16));
-        bellBadge.setPadding(dp(3), 0, dp(3), 0);
-        android.graphics.drawable.GradientDrawable badgeBg =
-                new android.graphics.drawable.GradientDrawable();
-        badgeBg.setColor(ACCENT_RED);
-        badgeBg.setCornerRadius(dp(8));
-        bellBadge.setBackground(badgeBg);
-        bellBadge.setVisibility(View.GONE);
-        android.widget.FrameLayout.LayoutParams badgeLp =
-                new android.widget.FrameLayout.LayoutParams(
-                        android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
-                        dp(16), Gravity.TOP | Gravity.END);
-        badgeLp.setMargins(0, dp(4), dp(3), 0);
-        bellBox.addView(bellBadge, badgeLp);
-        bellBox.setOnClickListener(v -> showNotificationCenter());
-        header.addView(bellBox, new LinearLayout.LayoutParams(dp(44), dp(44)));
+        header.addView(headerChip(R.drawable.ic_copy, Palette.KEY, Palette.TEXT,
+                "Copy all log", v -> copyAllLog()), chipLp());
+        header.addView(headerChip(R.drawable.ic_paste, Palette.KEY, Palette.TEXT,
+                "Paste", v -> pasteFromClipboard()), chipLp());
+        header.addView(headerChip(R.drawable.ic_delete, Palette.CHIP_RED, Palette.RED,
+                "Clear log", v -> clearTerminal()), chipLp());
+        header.addView(headerChip(R.drawable.ic_enter, Palette.KEY, Palette.TEXT,
+                "Enter", v -> sendEnter()), chipLp());
+        header.addView(headerChip(R.drawable.ic_keyboard, Palette.CHIP_ORANGE, Palette.ORANGE,
+                "Keyboard", v -> toggleKeyboard()), chipLp());
         refreshBell();
-        android.widget.ImageView moreBtn = headerIcon(R.drawable.ic_more_vert);
-        moreBtn.setOnClickListener(v -> showThemeMenu(v));
-        header.addView(moreBtn, new LinearLayout.LayoutParams(dp(44), dp(44)));
         getWindow().setStatusBarColor(THEMES[themeIdx][3]);
         getWindow().setNavigationBarColor(THEMES[themeIdx][0]);
 
         View headerLine = new View(this);
-        headerLine.setBackgroundColor(THEMES[themeIdx][4]);
+        if (themeIdx == 0) {
+            headerLine.setBackground(new android.graphics.drawable.GradientDrawable(
+                    android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
+                    new int[]{Palette.RED_FILL, Palette.ORANGE, Palette.LINE}));
+        } else {
+            headerLine.setBackgroundColor(THEMES[themeIdx][4]);
+        }
 
         root.addView(header, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(48)));
         root.addView(headerLine, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 1));
+                LinearLayout.LayoutParams.MATCH_PARENT, themeIdx == 0 ? dp(2) : 1));
+
+        // strip tab sesi: nomor sesi + garis bawah pada tab aktif, "+" = sesi baru
+        tabsScroll = new android.widget.HorizontalScrollView(this);
+        tabsScroll.setHorizontalScrollBarEnabled(false);
+        tabsScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        tabsScroll.setFillViewport(true);
+        tabsScroll.setBackgroundColor(THEMES[themeIdx][1]);
+        tabsBox = new LinearLayout(this);
+        tabsBox.setOrientation(LinearLayout.HORIZONTAL);
+        tabsBox.setPadding(dp(6), 0, dp(6), 0);
+        tabsScroll.addView(tabsBox, new android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
+        root.addView(tabsScroll, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(16)));
+        refreshTabs();
 
         root.addView(terminalScroll, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1));
@@ -1050,6 +1055,8 @@ public class MainActivity extends Activity {
     private static final Object NOTIF_LOCK = new Object();
     private static final int NOTIF_MAX = 50;
     private TextView bellBadge;
+    private android.widget.HorizontalScrollView tabsScroll;   // strip tab sesi
+    private LinearLayout tabsBox;
 
     private static SharedPreferences notifPrefs() {
         return appCtx.getSharedPreferences("paynux_notif", Context.MODE_PRIVATE);
@@ -1211,8 +1218,8 @@ public class MainActivity extends Activity {
 
         String kind = o.optString("k", "info");
         int dot;
-        if ("ok".equals(kind)) dot = Color.rgb(76, 175, 80);
-        else if ("warn".equals(kind)) dot = Color.rgb(255, 179, 0);
+        if ("ok".equals(kind)) dot = Palette.GREEN;
+        else if ("warn".equals(kind)) dot = Palette.AMBER;
         else if ("err".equals(kind)) dot = ACCENT_RED;
         else dot = CYAN_COLOR;
 
@@ -1220,23 +1227,23 @@ public class MainActivity extends Activity {
         SpannableString ts = new SpannableString("\u25CF  " + o.optString("h", ""));
         ts.setSpan(new ForegroundColorSpan(dot), 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         title.setText(ts);
-        title.setTextColor(Color.WHITE);
+        title.setTextColor(Palette.TEXT);
         title.setTextSize(14);
-        title.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        title.setTypeface(Typeface.create(monoTypeface(), Typeface.BOLD));
         box.addView(title, wrapLp());
 
         TextView msg = new TextView(this);
         msg.setText(o.optString("m", ""));
-        msg.setTextColor(Color.rgb(161, 161, 170));
+        msg.setTextColor(Palette.TEXT2);
         msg.setTextSize(12);
-        msg.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+        msg.setTypeface(Typeface.create(monoTypeface(), Typeface.NORMAL));
         box.addView(msg, wrapLp());
 
         TextView when = new TextView(this);
         when.setText(notifAgo(o.optLong("t", 0)));
-        when.setTextColor(Color.rgb(113, 113, 122));
-        when.setTextSize(10);
-        when.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+        when.setTextColor(Palette.DIM);
+        when.setTextSize(11);
+        when.setTypeface(Typeface.create(monoTypeface(), Typeface.NORMAL));
         box.addView(when, wrapLp());
 
         row.addView(box, new LinearLayout.LayoutParams(
@@ -1262,9 +1269,9 @@ public class MainActivity extends Activity {
         if (shown == 0) {
             TextView empty = new TextView(this);
             empty.setText("No notifications yet.\nSetup, terminal and update events will appear here.");
-            empty.setTextColor(Color.rgb(161, 161, 170));
+            empty.setTextColor(Palette.TEXT2);
             empty.setTextSize(13);
-            empty.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+            empty.setTypeface(Typeface.create(monoTypeface(), Typeface.NORMAL));
             empty.setPadding(0, dp(16), 0, dp(16));
             list.addView(empty, wrapLp());
         }
@@ -1297,7 +1304,7 @@ public class MainActivity extends Activity {
     private static final String[] THEME_NAMES = {
             "PayNux", "Dracula", "Solarized Dark", "Gruvbox Dark"};
     private static final int[][] THEMES = {
-            {0xFF0B0F14, 0xFF11161D, 0xFFFFFFFF, 0xFF0D1117, 0xFF1F252D},
+            {Palette.BG, Palette.PANEL, Palette.TEXT, Palette.PANEL, Palette.LINE},
             {0xFF282A36, 0xFF21222C, 0xFFF8F8F2, 0xFF21222C, 0xFF44475A},
             {0xFF002B36, 0xFF073642, 0xFF93A1A1, 0xFF073642, 0xFF0F4A58},
             {0xFF282828, 0xFF1D2021, 0xFFEBDBB2, 0xFF1D2021, 0xFF3C3836},
@@ -1332,9 +1339,9 @@ public class MainActivity extends Activity {
         final String distroFinal = distro;
 
         final TextView tv = new TextView(this);
-        tv.setTypeface(Typeface.MONOSPACE);
+        tv.setTypeface(monoTypeface());
         tv.setTextSize(11);
-        tv.setTextColor(Color.WHITE);
+        tv.setTextColor(Palette.TEXT);
         tv.setText(renderAbout(AboutInfo.rows(collectAboutData(distroFinal))));
 
         android.widget.ScrollView sv = new android.widget.ScrollView(this);
@@ -1431,7 +1438,7 @@ public class MainActivity extends Activity {
 
     /** Gaya aplikasi: monospace, label cyan, nilai putih, judul bagian redup. */
     private CharSequence renderAbout(java.util.List<AboutInfo.Row> rows) {
-        final int dim = Color.rgb(140, 140, 140);
+        final int dim = Palette.DIM;
         int w = AboutInfo.labelWidth(rows);
         android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder();
         for (int i = 0; i < rows.size(); i++) {
@@ -1487,7 +1494,7 @@ public class MainActivity extends Activity {
     private TextView dialogTitleView(String text) {
         TextView t = new TextView(this);
         t.setText(text);
-        t.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        t.setTypeface(monoTypeface(), Typeface.BOLD);
         t.setTextSize(14);
         t.setTextColor(CYAN_COLOR);
         t.setPadding(dp(24), dp(20), dp(24), dp(8));
@@ -1498,9 +1505,9 @@ public class MainActivity extends Activity {
     private TextView dialogMessageView(String text) {
         TextView t = new TextView(this);
         t.setText(text);
-        t.setTypeface(Typeface.MONOSPACE);
+        t.setTypeface(monoTypeface());
         t.setTextSize(12);
-        t.setTextColor(Color.WHITE);
+        t.setTextColor(Palette.TEXT);
         t.setPadding(dp(24), dp(8), dp(24), dp(8));
         return t;
     }
@@ -1523,6 +1530,84 @@ public class MainActivity extends Activity {
     }
 
     /** Ikon 44dp untuk header. */
+    private LinearLayout.LayoutParams chipLp() {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(34), dp(34));
+        lp.setMargins(dp(5), 0, 0, 0);
+        return lp;
+    }
+
+    /** Chip aksi bulat di header (bubble + ikon berwarna). */
+    private android.widget.ImageView headerChip(int res, int fill, int tint,
+                                                String desc, View.OnClickListener click) {
+        android.widget.ImageView iv = new android.widget.ImageView(this);
+        iv.setImageResource(res);
+        iv.setColorFilter(tint);
+        iv.setScaleType(android.widget.ImageView.ScaleType.CENTER_INSIDE);
+        iv.setPadding(dp(8), dp(8), dp(8), dp(8));
+        iv.setContentDescription(desc);
+        android.graphics.drawable.GradientDrawable n = new android.graphics.drawable.GradientDrawable();
+        n.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+        n.setColor(fill);
+        android.graphics.drawable.GradientDrawable pr = new android.graphics.drawable.GradientDrawable();
+        pr.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+        pr.setColor(Palette.KEY_PRESSED);
+        pr.setStroke(dp(1), Palette.ORANGE);
+        android.graphics.drawable.StateListDrawable sl = new android.graphics.drawable.StateListDrawable();
+        sl.addState(new int[]{android.R.attr.state_pressed}, pr);
+        sl.addState(new int[]{}, n);
+        iv.setBackground(sl);
+        iv.setClickable(true);
+        iv.setOnClickListener(click);
+        return iv;
+    }
+
+    /**
+     * Strip penanda sesi: satu garis slim per sesi (lebar sama). Sesi aktif =
+     * garis merah-oranye yang lebih tebal. Ketuk garis = pindah sesi, tahan = rename.
+     * "+" kecil = sesi baru; tutup sesi ada di sidebar.
+     */
+    private void refreshTabs() {
+        if (tabsBox == null) return;
+        tabsBox.removeAllViews();
+        for (final Sess sc : sessions) {
+            final boolean act = sc == active;
+            android.widget.FrameLayout cell = new android.widget.FrameLayout(this);
+            View line = new View(this);
+            android.graphics.drawable.GradientDrawable g;
+            if (act) {
+                g = new android.graphics.drawable.GradientDrawable(
+                        android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
+                        new int[]{Palette.RED_FILL, Palette.ORANGE});
+            } else {
+                g = new android.graphics.drawable.GradientDrawable();
+                g.setColor(Palette.SEG);
+            }
+            g.setCornerRadius(dp(2));
+            line.setBackground(g);
+            cell.addView(line, new android.widget.FrameLayout.LayoutParams(
+                    android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                    dp(act ? 3 : 2), Gravity.CENTER_VERTICAL));
+            cell.setOnClickListener(v -> { if (sessions.contains(sc)) activate(sc); });
+            cell.setOnLongClickListener(v -> { showRenameSession(sc); return true; });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.MATCH_PARENT, 1f);
+            lp.setMargins(dp(3), 0, dp(3), 0);
+            tabsBox.addView(cell, lp);
+        }
+        // "+" kecil di ujung kanan = sesi baru
+        TextView plus = new TextView(this);
+        plus.setText("+");
+        plus.setTextSize(14);
+        plus.setTextColor(Palette.ORANGE);
+        plus.setTypeface(Typeface.create(monoTypeface(), Typeface.BOLD));
+        plus.setIncludeFontPadding(false);
+        plus.setGravity(Gravity.CENTER);
+        plus.setContentDescription("New session");
+        plus.setOnClickListener(v -> newSession());
+        tabsBox.addView(plus, new LinearLayout.LayoutParams(
+                dp(30), LinearLayout.LayoutParams.MATCH_PARENT));
+    }
+
     private android.widget.ImageView headerIcon(int resId) {
         android.widget.ImageView iv = new android.widget.ImageView(this);
         iv.setImageResource(resId);
@@ -1538,6 +1623,121 @@ public class MainActivity extends Activity {
         return label.equals("\u2190") || label.equals("\u2191")
                 || label.equals("\u2193") || label.equals("\u2192")
                 || label.equals("PGUP") || label.equals("PGDN");
+    }
+
+    /**
+     * Panel extra-keys berbingkai: tiap 2 baris konfigurasi = 1 halaman.
+     * Geser kiri/kanan untuk pindah halaman; titik di bawah = posisi halaman.
+     */
+    private void buildKeyPanel(LinearLayout bar) {
+        java.util.List<java.util.List<String>> rows = loadToolbarRows();
+        final int pageCount = Math.max(1, (rows.size() + 1) / 2);
+
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        android.graphics.drawable.GradientDrawable pbg =
+                new android.graphics.drawable.GradientDrawable();
+        pbg.setColor(Palette.PANEL_IN);
+        pbg.setCornerRadius(dp(12));
+        pbg.setStroke(dp(1), Palette.EDGE);
+        panel.setBackground(pbg);
+        panel.setPadding(dp(3), dp(3), dp(3), dp(3));
+
+        final int[] downState = new int[2];   // [x awal, halaman awal]
+        final android.widget.HorizontalScrollView[] hsRef =
+                new android.widget.HorizontalScrollView[1];
+        final android.widget.HorizontalScrollView hs =
+                new android.widget.HorizontalScrollView(this) {
+            @Override public boolean dispatchTouchEvent(android.view.MotionEvent ev) {
+                int w = Math.max(1, getWidth());
+                int a = ev.getActionMasked();
+                if (a == android.view.MotionEvent.ACTION_DOWN) {
+                    downState[0] = (int) ev.getX();
+                    downState[1] = Math.round(getScrollX() / (float) w);
+                }
+                boolean r = super.dispatchTouchEvent(ev);
+                if (a == android.view.MotionEvent.ACTION_UP
+                        || a == android.view.MotionEvent.ACTION_CANCEL) {
+                    int dx = (int) ev.getX() - downState[0];
+                    int page = downState[1];
+                    if (dx < -dp(40)) page++; else if (dx > dp(40)) page--;
+                    final int target = Math.max(0, Math.min(pageCount - 1, page));
+                    postDelayed(() -> smoothScrollTo(target * Math.max(1, getWidth()), 0), 30);
+                }
+                return r;
+            }
+        };
+        hsRef[0] = hs;
+        hs.setHorizontalScrollBarEnabled(false);
+        hs.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        hs.setFillViewport(true);
+
+        final LinearLayout strip = new LinearLayout(this);
+        strip.setOrientation(LinearLayout.HORIZONTAL);
+        final java.util.List<LinearLayout> pages = new java.util.ArrayList<>();
+        for (int pg = 0; pg < pageCount; pg++) {
+            LinearLayout page = new LinearLayout(this);
+            page.setOrientation(LinearLayout.VERTICAL);
+            for (int ri = pg * 2; ri < Math.min(rows.size(), pg * 2 + 2); ri++) {
+                LinearLayout row = newToolbarRow();
+                for (String tok : rows.get(ri)) addToolbarToken(row, tok);
+                page.addView(row, new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, dp(KEY_H_DP)));
+            }
+            pages.add(page);
+            strip.addView(page, new LinearLayout.LayoutParams(
+                    dp(300), LinearLayout.LayoutParams.WRAP_CONTENT));
+        }
+        hs.addView(strip, new android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT));
+        // lebar tiap halaman = lebar panel
+        hs.addOnLayoutChangeListener((v, a1, a2, a3, a4, a5, a6, a7, a8) -> {
+            int w = a3 - a1;
+            if (w <= 0) return;
+            for (LinearLayout pgv : pages) {
+                android.view.ViewGroup.LayoutParams lp = pgv.getLayoutParams();
+                if (lp.width != w) { lp.width = w; pgv.setLayoutParams(lp); }
+            }
+        });
+        panel.addView(hs, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        if (pageCount > 1) {
+            final LinearLayout dots = new LinearLayout(this);
+            dots.setOrientation(LinearLayout.HORIZONTAL);
+            dots.setGravity(Gravity.CENTER);
+            final View[] dotViews = new View[pageCount];
+            for (int i = 0; i < pageCount; i++) {
+                dotViews[i] = new View(this);
+                LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(dp(5), dp(5));
+                dlp.setMargins(dp(3), 0, dp(3), 0);
+                dots.addView(dotViews[i], dlp);
+            }
+            final Runnable paintDots = () -> {
+                int w = Math.max(1, hs.getWidth());
+                int cur = Math.min(pageCount - 1, Math.max(0, Math.round(hs.getScrollX() / (float) w)));
+                for (int i = 0; i < dotViews.length; i++) {
+                    android.graphics.drawable.GradientDrawable g =
+                            new android.graphics.drawable.GradientDrawable();
+                    g.setCornerRadius(dp(3));
+                    g.setColor(i == cur ? Palette.ORANGE : Palette.DOT);
+                    dotViews[i].setBackground(g);
+                    LinearLayout.LayoutParams lp =
+                            (LinearLayout.LayoutParams) dotViews[i].getLayoutParams();
+                    int want = dp(i == cur ? 14 : 5);
+                    if (lp.width != want) { lp.width = want; dotViews[i].setLayoutParams(lp); }
+                }
+            };
+            paintDots.run();
+            hs.setOnScrollChangeListener((v, sx, sy, ox, oy) -> paintDots.run());
+            panel.addView(dots, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, dp(14)));
+        }
+        bar.addView(panel, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
     }
 
     /** Satu baris toolbar: 7 kolom, lebar sama, tinggi KEY_H_DP. */
@@ -1560,19 +1760,28 @@ public class MainActivity extends Activity {
 
     /**
      * Baris tombol toolbar. Dibaca dari ~/.paynux-keys (format ala Termux):
-     *   extra-keys = [[ESC,/,-,HOME,UP,END,SESS],[TAB,CTRL,ALT,LEFT,DOWN,RIGHT,KEYBOARD]]
+     *   extra-keys = [[ESC,TAB,HOME,UP,END,PGUP],[CTRL,ALT,LEFT,DOWN,RIGHT,PGDN],[/,-,|,~,_,$],[=,+,*,&,<,>]]
      * Bila file tidak ada / tidak valid -> default 2x7.
      */
     private java.util.List<java.util.List<String>> loadToolbarRows() {
         java.util.List<java.util.List<String>> def = new java.util.ArrayList<>();
-        def.add(java.util.Arrays.asList("ESC", "/", "-", "HOME", "UP", "END", "SESS"));
-        def.add(java.util.Arrays.asList("TAB", "CTRL", "ALT", "LEFT", "DOWN", "RIGHT", "KEYBOARD"));
+        def.add(java.util.Arrays.asList("ESC", "TAB", "HOME", "UP", "END", "PGUP"));
+        def.add(java.util.Arrays.asList("CTRL", "ALT", "LEFT", "DOWN", "RIGHT", "PGDN"));
+        def.add(java.util.Arrays.asList("/", "-", "|", "~", "_", "$"));
+        def.add(java.util.Arrays.asList("=", "+", "*", "&", "<", ">"));
+        // default lama (2x7): bila file masih persis default lama -> migrasi ke yang baru
+        java.util.List<java.util.List<String>> oldDef = new java.util.ArrayList<>();
+        oldDef.add(java.util.Arrays.asList("ESC", "/", "-", "HOME", "UP", "END", "SESS"));
+        oldDef.add(java.util.Arrays.asList("TAB", "CTRL", "ALT", "LEFT", "DOWN", "RIGHT", "KEYBOARD"));
         File f = toolbarConfigFile();
         try {
             if (!f.isFile()) { writeDefaultToolbarConfig(f); return def; }
             String txt = readText(f);
             java.util.List<java.util.List<String>> rows = ToolbarConfig.parse(txt);
-            if (rows != null && !rows.isEmpty()) return rows;
+            if (rows != null && !rows.isEmpty()) {
+                if (rows.equals(oldDef)) { writeDefaultToolbarConfig(f); return def; }
+                return rows;
+            }
         } catch (Throwable ignored) { }
         return def;
     }
@@ -1582,11 +1791,12 @@ public class MainActivity extends Activity {
             f.getParentFile().mkdirs();
             writeText(f, "# PayNux toolbar - same format as Termux extra-keys.\n"
                     + "# Edit, then reopen the app. Delete this file to restore the defaults.\n"
+                    + "# Every 2 rows = 1 page (swipe the key panel left/right).\n"
                     + "# Termux style also works: quoted keys, \\ line breaks, DRAWER = SESS.\n"
                     + "# Keys: ESC TAB CTRL ALT HOME END PGUP PGDN UP DOWN LEFT RIGHT\n"
                     + "#       SESS (session panel) KEYBOARD (\u2328) SPACE ENTER BACKSPACE\n"
                     + "# Any other key is sent as-is (up to 3 letters are shown).\n"
-                    + "extra-keys = [[ESC,/,-,HOME,UP,END,SESS],[TAB,CTRL,ALT,LEFT,DOWN,RIGHT,KEYBOARD]]\n");
+                    + "extra-keys = [[ESC,TAB,HOME,UP,END,PGUP],[CTRL,ALT,LEFT,DOWN,RIGHT,PGDN],[/,-,|,~,_,$],[=,+,*,&,<,>]]\n");
         } catch (Throwable ignored) { }
     }
 
@@ -1642,7 +1852,7 @@ public class MainActivity extends Activity {
                 android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
 
         drawer = new android.widget.FrameLayout(this);
-        drawer.setBackgroundColor(Color.rgb(18, 18, 18));
+        drawer.setBackgroundColor(Palette.PANEL);
         drawer.setElevation(dp(8));
         android.widget.FrameLayout.LayoutParams lp = new android.widget.FrameLayout.LayoutParams(
                 drawerWidthPx(), android.widget.FrameLayout.LayoutParams.MATCH_PARENT);
@@ -1657,21 +1867,123 @@ public class MainActivity extends Activity {
         drawer.removeAllViews();
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
+
+        // merek: logo + nama + tagline
+        LinearLayout brand = new LinearLayout(this);
+        brand.setOrientation(LinearLayout.HORIZONTAL);
+        brand.setGravity(Gravity.CENTER_VERTICAL);
+        brand.setPadding(dp(16), dp(14), dp(16), dp(12));
+        android.widget.ImageView logo = new android.widget.ImageView(this);
+        logo.setImageResource(R.drawable.ic_logo_header);
+        brand.addView(logo, new LinearLayout.LayoutParams(dp(34), dp(34)));
+        LinearLayout names = new LinearLayout(this);
+        names.setOrientation(LinearLayout.VERTICAL);
+        names.setPadding(dp(12), 0, 0, 0);
+        TextView nm = new TextView(this);
+        SpannableString nmText = new SpannableString("PayNux");
+        nmText.setSpan(new ForegroundColorSpan(Palette.TEXT), 0, 3, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        nmText.setSpan(new ForegroundColorSpan(ACCENT_RED), 3, 6, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        nm.setText(nmText);
+        nm.setTextSize(18);
+        nm.setTypeface(Typeface.create(monoTypeface(), Typeface.BOLD));
+        nm.setIncludeFontPadding(false);
+        names.addView(nm);
+        TextView tg = new TextView(this);
+        tg.setText("Linux On Your Pocket");
+        tg.setTextColor(Palette.TEXT2);
+        tg.setTextSize(11);
+        tg.setAllCaps(true);
+        tg.setLetterSpacing(0.08f);
+        tg.setTypeface(monoTypeface());
+        tg.setIncludeFontPadding(false);
+        names.addView(tg);
+        brand.addView(names);
+        box.addView(brand);
+        box.addView(drawerLine());
+
+        // daftar sesi
         android.widget.ScrollView sv = new android.widget.ScrollView(this);
         sv.addView(buildSessionPanel(this::closeDrawer, false));
         box.addView(sv, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
-        View actLine = new View(this);
-        actLine.setBackgroundColor(Color.rgb(38, 38, 38));
-        box.addView(actLine, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 1));
-        box.addView(buildSessionActions(this::closeDrawer),
-                new LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT));
+        box.addView(drawerLine());
+
+        // aksi lain (dipindah dari layar utama)
+        box.addView(drawerItem("+  New session", Palette.ORANGE, this::newSession));
+        box.addView(drawerItem("x  Close session", Palette.RED, () -> { if (active != null) confirmCloseSession(active); }));
+        box.addView(drawerItem("~  Reset terminal", Palette.TEXT, this::resetTerminal));
+
+        LinearLayout notif = drawerItemRow("!  Notifications", Palette.TEXT,
+                this::showNotificationCenter);
+        bellBadge = newBellBadge();
+        notif.addView(bellBadge, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, dp(18)));
+        box.addView(notif);
+        refreshBell();
+
+        box.addView(drawerItem("*  Theme", Palette.TEXT, this::showThemePicker));
+        box.addView(drawerItem("i  About", Palette.TEXT, this::showAbout));
+
         drawer.addView(box, new android.widget.FrameLayout.LayoutParams(
                 android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
                 android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
+    }
+
+    private View drawerLine() {
+        View v = new View(this);
+        v.setBackgroundColor(Palette.LINE);
+        v.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 1));
+        return v;
+    }
+
+    /** Baris menu sidebar (tinggi 48dp): ketuk = tutup sidebar lalu jalankan aksi. */
+    private LinearLayout drawerItemRow(String label, int color, final Runnable action) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(18), 0, dp(18), 0);
+        row.setMinimumHeight(dp(48));
+        android.graphics.drawable.StateListDrawable bg =
+                new android.graphics.drawable.StateListDrawable();
+        bg.addState(new int[]{android.R.attr.state_pressed},
+                new android.graphics.drawable.ColorDrawable(Palette.PRESSED));
+        bg.addState(new int[]{}, new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
+        row.setBackground(bg);
+        TextView tv = new TextView(this);
+        tv.setText(label);
+        tv.setTextSize(14);
+        tv.setTextColor(color);
+        tv.setTypeface(monoTypeface());
+        row.addView(tv, new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        row.setClickable(true);
+        row.setOnClickListener(v -> { closeDrawer(); action.run(); });
+        row.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(48)));
+        return row;
+    }
+
+    private LinearLayout drawerItem(String label, int color, Runnable action) {
+        return drawerItemRow(label, color, action);
+    }
+
+    private TextView newBellBadge() {
+        TextView b = new TextView(this);
+        b.setTextColor(Color.WHITE);
+        b.setTextSize(10);
+        b.setTypeface(Typeface.create(monoTypeface(), Typeface.BOLD));
+        b.setIncludeFontPadding(false);
+        b.setGravity(Gravity.CENTER);
+        b.setMinWidth(dp(18));
+        b.setPadding(dp(4), 0, dp(4), 0);
+        android.graphics.drawable.GradientDrawable bg =
+                new android.graphics.drawable.GradientDrawable();
+        bg.setColor(Palette.RED_FILL);
+        bg.setCornerRadius(dp(9));
+        b.setBackground(bg);
+        b.setVisibility(View.GONE);
+        return b;
     }
 
     /** Lebar drawer: maks 280dp, tapi tidak lebih dari 78% lebar layar. */
@@ -1834,7 +2146,10 @@ public class MainActivity extends Activity {
         if (label.equals("SESS") && cell instanceof android.view.ViewGroup) {
             buildSessionIcon((android.view.ViewGroup) cell, btn);
         }
-        row.addView(cell, new LinearLayout.LayoutParams(0, dp(KEY_H_DP), 1f));
+        LinearLayout.LayoutParams klp = new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.MATCH_PARENT, 1f);
+        klp.setMargins(dp(3), dp(2), dp(3), dp(2));
+        row.addView(cell, klp);
     }
 
     /**
@@ -1920,8 +2235,8 @@ public class MainActivity extends Activity {
 
         sessBadgeView = new TextView(this);
         sessBadgeView.setText(String.valueOf(sessions.size()));
-        sessBadgeView.setTextSize(6);
-        sessBadgeView.setTextColor(Color.rgb(16, 16, 16));
+        sessBadgeView.setTextSize(9);
+        sessBadgeView.setTextColor(Palette.BG);
         sessBadgeView.setGravity(Gravity.CENTER);
         sessBadgeView.setIncludeFontPadding(false);
         android.graphics.drawable.GradientDrawable bg =
@@ -1930,14 +2245,51 @@ public class MainActivity extends Activity {
         bg.setColor(CYAN_COLOR);
         sessBadgeView.setBackground(bg);
         cell.addView(sessBadgeView, new android.widget.FrameLayout.LayoutParams(
-                dp(11), dp(11), Gravity.END | Gravity.BOTTOM));
+                dp(14), dp(14), Gravity.END | Gravity.BOTTOM));
+    }
+
+    /** Bubble tombol: sudut membulat + garis tipis; ditekan = oranye gelap; terkunci (CTRL/ALT) = amber. */
+    private android.graphics.drawable.StateListDrawable keyBubble() {
+        android.graphics.drawable.StateListDrawable sl =
+                new android.graphics.drawable.StateListDrawable();
+        sl.addState(new int[]{android.R.attr.state_selected},
+                bubbleShape(Palette.AMBER, Palette.AMBER));
+        sl.addState(new int[]{android.R.attr.state_pressed},
+                bubbleShape(Palette.KEY_PRESSED, Palette.ORANGE));
+        sl.addState(new int[]{}, bubbleShape(Palette.KEY, Palette.LINE));
+        return sl;
+    }
+
+    private android.graphics.drawable.GradientDrawable bubbleShape(int fill, int stroke) {
+        android.graphics.drawable.GradientDrawable g =
+                new android.graphics.drawable.GradientDrawable();
+        g.setColor(fill);
+        g.setCornerRadius(dp(8));
+        g.setStroke(dp(1), stroke);
+        return g;
+    }
+
+    /** Tombol pengubah (ESC/TAB/CTRL/ALT) oranye, sisanya putih lembut. */
+    private int keyTextColor(String label) {
+        switch (label) {
+            case "ESC": case "TAB": case "CTRL": case "ALT": return Palette.ORANGE;
+            default: return Palette.TEXT;
+        }
+    }
+
+    /** Gaya CTRL/ALT: terkunci = isi amber + teks gelap, normal = bubble biasa. */
+    private void setLatchStyle(Button b, boolean on, String label) {
+        if (b == null) return;
+        b.setSelected(on);
+        b.setTextColor(on ? Palette.BG : keyTextColor(label));
+        b.setTypeface(Typeface.create(monoTypeface(), on ? Typeface.BOLD : Typeface.NORMAL));
     }
 
     private Button makeKey(String label, String seq) {
         Button btn = new Button(this);
         btn.setText(label);
         btn.setTextSize(11);
-        btn.setTextColor(CYAN_COLOR);
+        btn.setTextColor(keyTextColor(label));
         btn.setAllCaps(false);
         btn.setIncludeFontPadding(false);
         btn.setMinHeight(0);
@@ -1947,13 +2299,7 @@ public class MainActivity extends Activity {
         btn.setFocusable(false); // jangan curi fokus dari kolom input
 
         // umpan balik sentuh: gelap saat ditekan
-        android.graphics.drawable.StateListDrawable bg =
-                new android.graphics.drawable.StateListDrawable();
-        bg.addState(new int[]{android.R.attr.state_pressed},
-                new android.graphics.drawable.ColorDrawable(Color.rgb(70, 70, 70)));
-        bg.addState(new int[]{},
-                new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
-        btn.setBackground(bg);
+        btn.setBackground(keyBubble());
         btn.setStateListAnimator(null);
 
         if (label.equals("CTRL")) ctrlKeyBtn = btn;
@@ -1990,25 +2336,21 @@ public class MainActivity extends Activity {
             switch (label) {
                 case "CTRL":
                     ctrlMode[0] = !ctrlMode[0];
-                    btn.setTextColor(ctrlMode[0] ? YELLOW_COLOR : CYAN_COLOR);
-                    btn.setTypeface(null, ctrlMode[0] ? Typeface.BOLD : Typeface.NORMAL);
+                    setLatchStyle(btn, ctrlMode[0], "CTRL");
                     if (ctrlMode[0]) {
                         altMode[0] = false;
                         if (altKeyBtn != null) {
-                            altKeyBtn.setTextColor(CYAN_COLOR);
-                            altKeyBtn.setTypeface(null, Typeface.NORMAL);
+                            setLatchStyle(altKeyBtn, false, "ALT");
                         }
                     }
                     break;
                 case "ALT":
                     altMode[0] = !altMode[0];
-                    btn.setTextColor(altMode[0] ? YELLOW_COLOR : CYAN_COLOR);
-                    btn.setTypeface(null, altMode[0] ? Typeface.BOLD : Typeface.NORMAL);
+                    setLatchStyle(btn, altMode[0], "ALT");
                     if (altMode[0]) {
                         ctrlMode[0] = false;
                         if (ctrlKeyBtn != null) {
-                            ctrlKeyBtn.setTextColor(CYAN_COLOR);
-                            ctrlKeyBtn.setTypeface(null, Typeface.NORMAL);
+                            setLatchStyle(ctrlKeyBtn, false, "CTRL");
                         }
                     }
                     break;
@@ -2094,6 +2436,9 @@ public class MainActivity extends Activity {
         if (emulator != null) {
             emulator.feed("\u001b[H\u001b[2J\u001b[3J");
             scheduleRender();
+            // layar lokal sudah kosong; minta shell menggambar ulang prompt
+            // (Ctrl+L = clear-screen readline) supaya prompt langsung muncul
+            if (session != null && shellReady) session.write("\u000c");
         }
     }
 
@@ -2101,10 +2446,10 @@ public class MainActivity extends Activity {
     // RENDER: emulator cell grid -> Spannable TextView
     // ============================================================
 
-    private static final int CYAN_COLOR   = Color.rgb(51, 187, 200);
-    /** Merah aksen #DC2626: hanya untuk header/banner. */
-    private static final int ACCENT_RED   = Color.rgb(220, 38, 38);
-    private static final int YELLOW_COLOR = Color.rgb(229, 192, 82);
+    private static final int CYAN_COLOR   = Palette.ORANGE; // nama lama dipertahankan; kini oranye
+    /** Merah aksen (teks/strip). Isi tombol/badge pakai Palette.RED_FILL. */
+    private static final int ACCENT_RED   = Palette.RED;
+    private static final int YELLOW_COLOR = Palette.AMBER;
 
     private Button ctrlKeyBtn;
     private Button altKeyBtn;
@@ -2579,6 +2924,7 @@ public class MainActivity extends Activity {
     }
 
     private void updateSessionButton() {
+        refreshTabs();
         if (sessBadgeView != null) {
             sessBadgeView.setText(String.valueOf(sessions.size()));
         }
@@ -2703,7 +3049,7 @@ public class MainActivity extends Activity {
         dlg.show();
         if (dlg.getWindow() != null) {
             dlg.getWindow().setBackgroundDrawable(
-                    new android.graphics.drawable.ColorDrawable(Color.rgb(18, 18, 18)));
+                    new android.graphics.drawable.ColorDrawable(Palette.PANEL));
         }
     }
 
@@ -2720,9 +3066,9 @@ public class MainActivity extends Activity {
         final List<Sess> snap = new ArrayList<>(sessions);
         final int n = snap.size();
 
-        final int BG_PANEL = Color.rgb(18, 18, 18);
-        final int BG_ROW   = Color.rgb(24, 24, 24);
-        final int FG_DIM   = Color.rgb(140, 140, 140);
+        final int BG_PANEL = Palette.PANEL;
+        final int BG_ROW   = Palette.ROW;
+        final int FG_DIM   = Palette.DIM;
 
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
@@ -2733,7 +3079,7 @@ public class MainActivity extends Activity {
         title.setText("Sessions");
         title.setTextColor(CYAN_COLOR);
         title.setTextSize(14);
-        title.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        title.setTypeface(monoTypeface(), Typeface.BOLD);
         title.setPadding(dp(16), dp(14), dp(16), dp(2));
         panel.addView(title);
 
@@ -2741,8 +3087,8 @@ public class MainActivity extends Activity {
         hint.setText(n + (n == 1 ? " session" : " sessions")
                 + "  \u00B7  tap to switch  \u00B7  hold to close");
         hint.setTextColor(FG_DIM);
-        hint.setTextSize(9);
-        hint.setTypeface(Typeface.MONOSPACE);
+        hint.setTextSize(11);
+        hint.setTypeface(monoTypeface());
         hint.setPadding(dp(16), 0, dp(16), dp(10));
         panel.addView(hint);
 
@@ -2752,7 +3098,7 @@ public class MainActivity extends Activity {
             empty.setText("No sessions");
             empty.setTextColor(FG_DIM);
             empty.setTextSize(11);
-            empty.setTypeface(Typeface.MONOSPACE);
+            empty.setTypeface(monoTypeface());
             empty.setPadding(dp(16), dp(14), dp(16), dp(18));
             panel.addView(empty);
         }
@@ -2769,22 +3115,34 @@ public class MainActivity extends Activity {
 
             android.graphics.drawable.GradientDrawable rowBg =
                     new android.graphics.drawable.GradientDrawable();
-            rowBg.setColor(act ? Color.rgb(26, 40, 44) : BG_ROW);
-            row.setBackground(rowBg);
+            rowBg.setColor(act ? Palette.ROW_ACTIVE : BG_ROW);
+            rowBg.setCornerRadius(dp(2));
+            if (act) {
+                android.graphics.drawable.ColorDrawable bar =
+                        new android.graphics.drawable.ColorDrawable(Palette.ORANGE);
+                android.graphics.drawable.LayerDrawable ld =
+                        new android.graphics.drawable.LayerDrawable(
+                                new android.graphics.drawable.Drawable[]{rowBg, bar});
+                ld.setLayerWidth(1, dp(3));
+                ld.setLayerGravity(1, Gravity.START | Gravity.FILL_VERTICAL);
+                row.setBackground(ld);
+            } else {
+                row.setBackground(rowBg);
+            }
 
             TextView t1 = new TextView(this);
             t1.setText((act ? "\u25B6 " : "  ") + sessionTitle(sc));
-            t1.setTextColor(act ? CYAN_COLOR : Color.WHITE);
+            t1.setTextColor(act ? CYAN_COLOR : Palette.TEXT);
             t1.setTextSize(12);
-            t1.setTypeface(Typeface.MONOSPACE,
+            t1.setTypeface(monoTypeface(),
                     act ? Typeface.BOLD : Typeface.NORMAL);
             row.addView(t1);
 
             TextView t2 = new TextView(this);
             t2.setText(st + (pv.isEmpty() ? "" : "   " + pv));
             t2.setTextColor(FG_DIM);
-            t2.setTextSize(9);
-            t2.setTypeface(Typeface.MONOSPACE);
+            t2.setTextSize(11);
+            t2.setTypeface(monoTypeface());
             t2.setSingleLine(true);
             t2.setEllipsize(android.text.TextUtils.TruncateAt.END);
             row.addView(t2);
@@ -2801,7 +3159,7 @@ public class MainActivity extends Activity {
             panel.addView(row);
 
             View sep = new View(this);
-            sep.setBackgroundColor(Color.rgb(38, 38, 38));
+            sep.setBackgroundColor(Palette.LINE);
             panel.addView(sep, new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, 1));
         }
@@ -2818,7 +3176,7 @@ public class MainActivity extends Activity {
         actions.setOrientation(LinearLayout.HORIZONTAL);
         actions.setGravity(Gravity.CENTER_VERTICAL);
         actions.setPadding(dp(8), dp(6), dp(8), dp(6));
-        actions.setBackgroundColor(Color.rgb(18, 18, 18));
+        actions.setBackgroundColor(Palette.PANEL);
 
         addSessionAction(actions, "New",
                 () -> { onDismiss.run(); newSession(); });
@@ -2841,12 +3199,12 @@ public class MainActivity extends Activity {
         b.setMinHeight(0);
         b.setMinWidth(0);
         b.setPadding(dp(10), dp(6), dp(10), dp(6));
-        b.setTypeface(Typeface.MONOSPACE);
+        b.setTypeface(monoTypeface());
         b.setFocusable(false);
         android.graphics.drawable.StateListDrawable bg =
                 new android.graphics.drawable.StateListDrawable();
         bg.addState(new int[]{android.R.attr.state_pressed},
-                new android.graphics.drawable.ColorDrawable(Color.rgb(40, 40, 40)));
+                new android.graphics.drawable.ColorDrawable(Palette.PRESSED));
         bg.addState(new int[]{},
                 new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
         b.setBackground(bg);
@@ -3227,12 +3585,10 @@ public class MainActivity extends Activity {
             altMode[0] = false;
             runOnUiThread(() -> {
                 if (ctrlKeyBtn != null) {
-                    ctrlKeyBtn.setTextColor(CYAN_COLOR);
-                    ctrlKeyBtn.setTypeface(null, Typeface.NORMAL);
+                    setLatchStyle(ctrlKeyBtn, false, "CTRL");
                 }
                 if (altKeyBtn != null) {
-                    altKeyBtn.setTextColor(CYAN_COLOR);
-                    altKeyBtn.setTypeface(null, Typeface.NORMAL);
+                    setLatchStyle(altKeyBtn, false, "ALT");
                 }
             });
         }
@@ -3377,10 +3733,10 @@ public class MainActivity extends Activity {
     private void showRenameSession(final Sess sc) {
         final android.widget.EditText input = new android.widget.EditText(this);
         input.setSingleLine(true);
-        input.setTypeface(Typeface.MONOSPACE);
+        input.setTypeface(monoTypeface());
         input.setTextSize(12);
-        input.setTextColor(Color.WHITE);
-        input.setHintTextColor(Color.rgb(140, 140, 140));
+        input.setTextColor(Palette.TEXT);
+        input.setHintTextColor(Palette.DIM);
         input.setHint("Session " + sc.id);
         input.setText(sc.name == null ? "" : sc.name);
         input.setSelection(input.getText().length());
@@ -4492,7 +4848,7 @@ public class MainActivity extends Activity {
                 + "  alias grep='grep --color=auto'\n"
                 + "  alias ll='ls -alF'\n"
                 + "  if [ -z \"${PAYNUX_PLAIN_PROMPT:-}\" ]; then\n"
-                + "    PS1='\\[\\e[1;32m\\]┌──(\\[\\e[1;36m\\]\\u\\[\\e[1;32m\\]@\\[\\e[1;31m\\]paynux\\[\\e[1;32m\\])-[\\[\\e[1;37m\\]\\w] \\[\\e[1;33m\\]\\t\\n\\[\\e[1;32m\\]╰╼ \\[\\e[0m\\]'\n"
+                + "    PS1='\\[\\e[1;38;2;255;74;61m\\]\\u\\[\\e[1;38;2;255;138;31m\\]@paynux\\[\\e[0;38;2;138;138;148m\\]:\\[\\e[0;38;2;236;236;238m\\]\\w\\[\\e[1;38;2;255;74;61m\\]#\\[\\e[0m\\] '\n"
                 + "  fi\n"
                 + "else\n"
                 + "  PS1='root@ubuntu:\\w# '\n"

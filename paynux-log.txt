@@ -1,0 +1,138 @@
+--------- beginning of main
+11-03 13:23:47.338  2380  2380 I ocketdev.paynux: Late-enabling -Xcheck:jni
+11-03 13:23:47.354  2380  2380 I ocketdev.paynux: Using generational CollectorTypeCC GC.
+11-03 13:23:47.359  2380  2380 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+11-03 13:23:47.360  2380  2380 D ActivityThread: setConscryptValidator
+11-03 13:23:47.360  2380  2380 D ActivityThread: setConscryptValidator - put
+11-03 13:23:47.373  2380  2380 D CompatibilityChangeReporter: Compat change id reported: 171979766; UID 10423; state: ENABLED
+11-03 13:23:47.454  2380  2380 D nativeloader: Configuring clns-4 for other apk /data/app/~~BXIfQj4mjgHFTzcA-Qxocg==/com.pocketdev.paynux-HFc_nXHLvR7HwEtCpn_xyQ==/base.apk. target_sdk_version=36, uses_libraries=, library_path=/data/app/~~BXIfQj4mjgHFTzcA-Qxocg==/com.pocketdev.paynux-HFc_nXHLvR7HwEtCpn_xyQ==/lib/arm64:/data/app/~~BXIfQj4mjgHFTzcA-Qxocg==/com.pocketdev.paynux-HFc_nXHLvR7HwEtCpn_xyQ==/base.apk!/lib/arm64-v8a, permitted_path=/data:/mnt/expand:/data/user/0/com.pocketdev.paynux
+11-03 13:23:47.459  2380  2380 D nativeloader: Load libframework-connectivity-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity.jar: ok
+11-03 13:23:47.461  2380  2380 V GraphicsEnvironment: ANGLE Developer option for 'com.pocketdev.paynux' set to: 'default'
+11-03 13:23:47.462  2380  2380 V GraphicsEnvironment: ANGLE GameManagerService for com.pocketdev.paynux: false
+11-03 13:23:47.462  2380  2380 V GraphicsEnvironment: App is not on the allowlist for updatable production driver.
+11-03 13:23:47.463  2380  2380 D NetworkSecurityConfig: Using Network Security Config from resource network_security_config debugBuild: true
+11-03 13:23:47.495  2380  2380 D NetworkSecurityConfig: Using Network Security Config from resource network_security_config debugBuild: true
+11-03 13:23:47.509  2380  2395 D OpenGLRenderer: RenderThread::requireGlContext()
+11-03 13:23:47.509  2380  2395 I AdrenoGLES-0: QUALCOMM build                   : db7e7066a2, I1fad33e957
+11-03 13:23:47.509  2380  2395 I AdrenoGLES-0: Build Date                       : 05/11/25
+11-03 13:23:47.509  2380  2395 I AdrenoGLES-0: OpenGL ES Shader Compiler Version: EV031.32.02.10
+11-03 13:23:47.509  2380  2395 I AdrenoGLES-0: Local Branch                     : 
+11-03 13:23:47.509  2380  2395 I AdrenoGLES-0: Remote Branch                    : refs/tags/AU_LINUX_ANDROID_LA.UM.9.12.11.00.00.582.697
+11-03 13:23:47.509  2380  2395 I AdrenoGLES-0: Remote Branch                    : NONE
+11-03 13:23:47.509  2380  2395 I AdrenoGLES-0: Reconstruct Branch               : NOTHING
+11-03 13:23:47.509  2380  2395 I AdrenoGLES-0: Build Config                     : S P 10.0.7 AArch64
+11-03 13:23:47.509  2380  2395 I AdrenoGLES-0: Driver Path                      : /vendor/lib64/egl/libGLESv2_adreno.so
+11-03 13:23:47.512  2380  2395 I AdrenoGLES-0: PFP: 0x016dd093, ME: 0x00000000
+11-03 13:23:47.517  2380  2395 D OpenGLRenderer: RenderThread::setGrContext()
+11-03 13:23:47.535  2380  2380 I DecorView: [INFO] isPopOver=false config=true
+11-03 13:23:47.535  2380  2380 I DecorView: updateCaptionType: isFloating=false isApplication=true hasWindowDecorCaption=false this=DecorView@16bd57e[]
+11-03 13:23:47.535  2380  2380 D DecorView: setCaptionType = 0, this = DecorView@16bd57e[]
+11-03 13:23:47.537  2380  2380 I DecorView: getCurrentDensityDpi: from real metrics. densityDpi=420 msg=resources_loaded
+11-03 13:23:47.537  2380  2380 I DecorView: setWindowBackground: isPopOver=false color=ff121212 d=android.graphics.drawable.ColorDrawable@d40732c
+11-03 13:23:47.555  2380  2402 D PayNuxTerminal: Initializing PRootManager...
+11-03 13:23:47.559  2380  2402 E PayNuxTerminal: Missing native libraries: libtalloc.so.2 in /data/app/~~BXIfQj4mjgHFTzcA-Qxocg==/com.pocketdev.paynux-HFc_nXHLvR7HwEtCpn_xyQ==/lib/arm64
+11-03 13:23:47.559  2380  2402 W PayNuxTerminal: Required native libraries not available - PRoot cannot start
+11-03 13:23:47.559  2380  2380 I MSHandlerLifeCycle: check: return. pkg=com.pocketdev.paynux parent=null callers=com.android.internal.policy.DecorView.setVisibility:4412 android.app.ActivityThread.handleResumeActivity:5476 android.app.servertransaction.ResumeActivityItem.execute:54 android.app.servertransaction.ActivityTransactionItem.execute:45 android.app.servertransaction.TransactionExecutor.executeLifecycleState:176 
+11-03 13:23:47.559  2380  2380 I MSHandlerLifeCycle: removeMultiSplitHandler: no exist. decor=DecorView@16bd57e[]
+11-03 13:23:47.564  2380  2395 D NativeCustomFrequencyManager: [NativeCFMS] BpCustomFrequencyManager::BpCustomFrequencyManager()
+11-03 13:23:47.569  2380  2380 D InsetsController: onStateChanged: InsetsState: {mDisplayFrame=Rect(0, 0 - 1080, 2316), mDisplayCutout=DisplayCutout{insets=Rect(0, 67 - 0, 0) waterfall=Insets{left=0, top=0, right=0, bottom=0} boundingRect={Bounds=[Rect(0, 0 - 0, 0), Rect(694, 0 - 746, 67), Rect(0, 0 - 0, 0), Rect(0, 0 - 0, 0)]} cutoutPathParserInfo={CutoutPathParserInfo{displayWidth=1080 displayHeight=2316 physicalDisplayWidth=1440 physicalDisplayHeight=3088 density={2.625} cutoutSpec={M 0,0 H -10 V 25.42857142857143 H 10 V 0 H 0 Z @dp} rotation={0} scale={1.0} physicalPixelDisplaySizeRatio={1.0}}}}, mRoundedCorners=RoundedCorners{[RoundedCorner{position=TopLeft, radius=18, center=Point(18, 18)}, RoundedCorner{position=TopRight, radius=18, center=Point(1062, 18)}, RoundedCorner{position=BottomRight, radius=18, center=Point(1062, 2298)}, RoundedCorner{position=BottomLeft, radius=18, center=Point(18, 2298)}]}  mRoundedCornerFrame=Rect(0, 0 - 1080, 2316), mPrivacyIndicatorBounds=PrivacyIndicatorBounds {static bounds=Rect(964, 0 - 1080, 67) rotation=0}, mSources= { InsetsSource: {mType=ITYPE_STATUS_BAR, mFrame=[0,0][1080,67], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_NAVIGATION_BAR, mFrame=[0,2190][1080,2316], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_LEFT_GESTURES, mFrame=[0,0][0,2316], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_RIGHT_GESTURES, mFrame=[1080,0][1080,2316], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_TOP_MANDATORY_GESTURES, mFrame=[0,0][1080,99], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_BOTTOM_MANDATORY_GESTURES, mFrame=[0,2190][1080,2316], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_LEFT_DISPLAY_CUTOUT, mFrame=[0,0][-100000,2316], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_TOP_DISPLAY_CUTOUT, mFrame=[0,0][1080,67], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_RIGHT_DISPLAY_CUTOUT, mFrame=[100000,0][1080,2316], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_BOTTOM_DISPLAY_CUTOUT, mFrame=[0,100000][1080,2316], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_TOP_TAPPABLE_ELEMENT, mFrame=[0,0][1080,67], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_BOTTOM_TAPPABLE_ELEMENT, mFrame=[0,2190][1080,2316], mVisible=true, mInsetsRoundedCornerFrame=false} } host=com.pocketdev.paynux/com.pocketdev.paynux.MainActivity from=android.view.ViewRootImpl.setView:1732
+11-03 13:23:47.570  2380  2380 I ViewRootImpl@10ef265[MainActivity]: setView = com.android.internal.policy.DecorView@16bd57e TM=true
+11-03 13:23:47.571  2380  2380 I MSHandlerLifeCycle: removeMultiSplitHandler: no exist. decor=DecorView@16bd57e[MainActivity]
+11-03 13:23:47.773  2380  2380 I ViewRootImpl@10ef265[MainActivity]: performTraversals params={(0,0)(fillxfill) sim={adjust=resize forwardNavigation} ty=BASE_APPLICATION wanim=0x1030309
+11-03 13:23:47.773  2380  2380 I ViewRootImpl@10ef265[MainActivity]:   fl=81810100
+11-03 13:23:47.773  2380  2380 I ViewRootImpl@10ef265[MainActivity]:   pfl=12020040
+11-03 13:23:47.773  2380  2380 I ViewRootImpl@10ef265[MainActivity]:   bhv=DEFAULT
+11-03 13:23:47.773  2380  2380 I ViewRootImpl@10ef265[MainActivity]:   fitSides= naviIconColor=0}
+11-03 13:23:47.774  2380  2380 I ViewRootImpl@10ef265[MainActivity]: performTraversals mFirst=true windowShouldResize=true viewVisibilityChanged=false mForceNextWindowRelayout=false params={(0,0)(fillxfill) sim={adjust=resize forwardNavigation} ty=BASE_APPLICATION wanim=0x1030309
+11-03 13:23:47.774  2380  2380 I ViewRootImpl@10ef265[MainActivity]:   fl=81810100
+11-03 13:23:47.774  2380  2380 I ViewRootImpl@10ef265[MainActivity]:   pfl=12020040
+11-03 13:23:47.774  2380  2380 I ViewRootImpl@10ef265[MainActivity]:   bhv=DEFAULT
+11-03 13:23:47.774  2380  2380 I ViewRootImpl@10ef265[MainActivity]:   fitSides= naviIconColor=0}
+11-03 13:23:47.779  2380  2380 D InsetsController: onStateChanged: InsetsState: {mDisplayFrame=Rect(0, 0 - 1080, 2316), mDisplayCutout=DisplayCutout{insets=Rect(0, 67 - 0, 0) waterfall=Insets{left=0, top=0, right=0, bottom=0} boundingRect={Bounds=[Rect(0, 0 - 0, 0), Rect(694, 0 - 746, 67), Rect(0, 0 - 0, 0), Rect(0, 0 - 0, 0)]} cutoutPathParserInfo={CutoutPathParserInfo{displayWidth=1080 displayHeight=2316 physicalDisplayWidth=1440 physicalDisplayHeight=3088 density={2.625} cutoutSpec={M 0,0 H -10 V 25.42857142857143 H 10 V 0 H 0 Z @dp} rotation={0} scale={1.0} physicalPixelDisplaySizeRatio={1.0}}}}, mRoundedCorners=RoundedCorners{[RoundedCorner{position=TopLeft, radius=18, center=Point(18, 18)}, RoundedCorner{position=TopRight, radius=18, center=Point(1062, 18)}, RoundedCorner{position=BottomRight, radius=18, center=Point(1062, 2298)}, RoundedCorner{position=BottomLeft, radius=18, center=Point(18, 2298)}]}  mRoundedCornerFrame=Rect(0, 0 - 1080, 2316), mPrivacyIndicatorBounds=PrivacyIndicatorBounds {static bounds=Rect(964, 0 - 1080, 67) rotation=0}, mSources= { InsetsSource: {mType=ITYPE_STATUS_BAR, mFrame=[0,0][1080,67], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_NAVIGATION_BAR, mFrame=[0,2190][1080,2316], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_LEFT_GESTURES, mFrame=[0,0][0,2316], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_RIGHT_GESTURES, mFrame=[1080,0][1080,2316], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_TOP_MANDATORY_GESTURES, mFrame=[0,0][1080,99], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_BOTTOM_MANDATORY_GESTURES, mFrame=[0,2190][1080,2316], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_LEFT_DISPLAY_CUTOUT, mFrame=[0,0][-100000,2316], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_TOP_DISPLAY_CUTOUT, mFrame=[0,0][1080,67], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_RIGHT_DISPLAY_CUTOUT, mFrame=[100000,0][1080,2316], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_BOTTOM_DISPLAY_CUTOUT, mFrame=[0,100000][1080,2316], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_TOP_TAPPABLE_ELEMENT, mFrame=[0,0][1080,67], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_BOTTOM_TAPPABLE_ELEMENT, mFrame=[0,2190][1080,2316], mVisible=true, mInsetsRoundedCornerFrame=false}, InsetsSource: {mType=ITYPE_IME, mFrame=[0,0][0,0], mVisibleFrame=[0,1325][1080,2316], mVisible=false, mInsetsRoundedCornerFrame=false} } host=com.pocketdev.paynux/com.pocketdev.paynux.MainActivity from=android.view.ViewRootImpl.relayoutWindow:9802
+11-03 13:23:47.780  2380  2380 I ViewRootImpl@10ef265[MainActivity]: updateBlastSurfaceIfNeeded mBlastBufferQueue=null isSameSurfaceControl=false
+11-03 13:23:47.781  2380  2380 E BufferQueueProducer: Unable to open libpenguin.so: dlopen failed: library "libpenguin.so" not found.
+11-03 13:23:47.781  2380  2380 I BLASTBufferQueue: new BLASTBufferQueue, mName= ViewRootImpl@10ef265[MainActivity] mNativeObject= 0xb400006e68189510 sc.mNativeObject= 0xb400006df81a5920 caller= android.view.ViewRootImpl.updateBlastSurfaceIfNeeded:2909 android.view.ViewRootImpl.relayoutWindow:9847 android.view.ViewRootImpl.performTraversals:3884 android.view.ViewRootImpl.doTraversal:3116 android.view.ViewRootImpl$TraversalRunnable.run:10885 android.view.Choreographer$CallbackRecord.run:1301 android.view.Choreographer$CallbackRecord.run:1309 android.view.Choreographer.doCallbacks:923 android.view.Choreographer.doFrame:852 android.view.Choreographer$FrameDisplayEventReceiver.run:1283 
+11-03 13:23:47.781  2380  2380 I BLASTBufferQueue: update, w= 1080 h= 2316 mName = ViewRootImpl@10ef265[MainActivity] mNativeObject= 0xb400006e68189510 sc.mNativeObject= 0xb400006df81a5920 format= -1 caller= android.graphics.BLASTBufferQueue.<init>:84 android.view.ViewRootImpl.updateBlastSurfaceIfNeeded:2909 android.view.ViewRootImpl.relayoutWindow:9847 android.view.ViewRootImpl.performTraversals:3884 android.view.ViewRootImpl.doTraversal:3116 android.view.ViewRootImpl$TraversalRunnable.run:10885 
+11-03 13:23:47.781  2380  2380 I ViewRootImpl@10ef265[MainActivity]: Relayout returned: old=(0,0,1080,2316) new=(0,0,1080,2316) req=(1080,2316)0 dur=6 res=0x3 s={true 0xb400006ef81876c0} ch=true seqId=0
+11-03 13:23:47.782  2380  2380 I ViewRootImpl@10ef265[MainActivity]: mThreadedRenderer.initialize() mSurface={isValid=true 0xb400006ef81876c0} hwInitialized=true
+11-03 13:23:47.785  2380  2395 D OpenGLRenderer: eglCreateWindowSurface
+11-03 13:23:47.793  2380  2380 I ViewRootImpl@10ef265[MainActivity]: reportNextDraw android.view.ViewRootImpl.performTraversals:4438 android.view.ViewRootImpl.doTraversal:3116 android.view.ViewRootImpl$TraversalRunnable.run:10885 android.view.Choreographer$CallbackRecord.run:1301 android.view.Choreographer$CallbackRecord.run:1309 
+11-03 13:23:47.793  2380  2380 I ViewRootImpl@10ef265[MainActivity]: Setup new sync id=0
+11-03 13:23:47.794  2380  2380 I ViewRootImpl@10ef265[MainActivity]: Setting syncFrameCallback
+11-03 13:23:47.794  2380  2380 I ViewRootImpl@10ef265[MainActivity]: registerCallbacksForSync syncBuffer=false
+11-03 13:23:47.799  2380  2414 I ViewRootImpl@10ef265[MainActivity]: Received frameDrawingCallback syncResult=0 frameNum=1.
+11-03 13:23:47.799  2380  2414 I ViewRootImpl@10ef265[MainActivity]: Setting up sync and frameCommitCallback
+11-03 13:23:47.804  2380  2395 I BLASTBufferQueue: [ViewRootImpl@10ef265[MainActivity]#0](f:0,a:0) onFrameAvailable the first frame is available
+11-03 13:23:47.804  2380  2395 I ViewRootImpl@10ef265[MainActivity]: Received frameCommittedCallback lastAttemptedDrawFrameNum=1 didProduceBuffer=true
+11-03 13:23:47.805  2380  2395 D OpenGLRenderer: CFMS:: SetUp Pid : 2380    Tid : 2395
+11-03 13:23:47.806  2380  2395 W Parcel  : Expecting binder but got null!
+11-03 13:23:47.806  2380  2380 I ViewRootImpl@10ef265[MainActivity]: onSyncComplete
+11-03 13:23:47.807  2380  2380 I ViewRootImpl@10ef265[MainActivity]: setupSync seqId=0 mSyncId=0 fn=1 caller=android.view.ViewRootImpl$$ExternalSyntheticLambda11.accept:6 android.window.SurfaceSyncer.lambda$setupSync$1$android-window-SurfaceSyncer:128 android.window.SurfaceSyncer$$ExternalSyntheticLambda1.accept:8 android.window.SurfaceSyncer$SyncSet.checkIfSyncIsComplete:382 android.window.SurfaceSyncer$SyncSet.markSyncReady:359 android.window.SurfaceSyncer.markSyncReady:151 android.view.ViewRootImpl.performTraversals:4503 
+11-03 13:23:47.807  2380  2380 I ViewRootImpl@10ef265[MainActivity]: reportDrawFinished seqId=0 mSyncId=-1 fn=1 mSurfaceChangedTransaction=0xb400006e2817f690
+11-03 13:23:47.867  2380  2380 I ViewRootImpl@10ef265[MainActivity]: MSG_WINDOW_FOCUS_CHANGED 1 0
+11-03 13:23:47.868  2380  2380 I ViewRootImpl@10ef265[MainActivity]: mThreadedRenderer.initializeIfNeeded()#2 mSurface={isValid=true 0xb400006ef81876c0}
+11-03 13:23:47.868  2380  2380 D InputMethodManager: startInputInner - Id : 0
+11-03 13:23:47.868  2380  2380 I InputMethodManager: startInputInner - mService.startInputOrWindowGainedFocus
+11-03 13:23:47.873  2380  2380 D InputMethodManager: startInputInner - Id : 0
+11-03 13:23:47.992  2380  2384 I ocketdev.paynux: Compiler allocated 6246KB to compile void android.view.ViewRootImpl.performTraversals()
+11-03 13:23:48.715  2380  2380 I ViewRootImpl@10ef265[MainActivity]: MSG_WINDOW_FOCUS_CHANGED 0 0
+11-03 13:23:49.043  2380  2380 I ViewRootImpl@10ef265[MainActivity]: handleAppVisibility mAppVisible = true visible = false
+11-03 13:23:49.048  2380  2395 D OpenGLRenderer: setSurface called with nullptr
+11-03 13:23:49.048  2380  2395 D OpenGLRenderer: setSurface() destroyed EGLSurface
+11-03 13:23:49.048  2380  2395 D OpenGLRenderer: destroyEglSurface
+11-03 13:23:49.055  2380  2380 I ViewRootImpl@10ef265[MainActivity]: performTraversals mFirst=false windowShouldResize=false viewVisibilityChanged=true mForceNextWindowRelayout=false params=null
+11-03 13:23:49.065  2380  2380 I ViewRootImpl@10ef265[MainActivity]: Relayout returned: old=(0,0,1080,2316) new=(0,0,1080,2316) req=(1080,2316)8 dur=9 res=0x2 s={false 0x0} ch=true seqId=0
+11-03 13:23:49.080  2380  2380 I ViewRootImpl@10ef265[MainActivity]: stopped(true) old = false
+11-03 13:23:49.081  2380  2380 I ViewRootImpl@10ef265[MainActivity]: WindowStopped on com.pocketdev.paynux/com.pocketdev.paynux.MainActivity set to true
+11-03 13:23:49.086  2380  2380 I MSHandlerLifeCycle: removeMultiSplitHandler: no exist. decor=DecorView@16bd57e[MainActivity]
+11-03 13:23:49.088  2380  2380 D InputTransport: Input channel destroyed: 'ClientS', fd=116
+11-03 13:23:52.975  2380  2380 I ViewRootImpl@10ef265[MainActivity]: handleAppVisibility mAppVisible = false visible = true
+11-03 13:23:52.979  2380  2380 I ViewRootImpl@10ef265[MainActivity]: stopped(false) old = true
+11-03 13:23:52.980  2380  2380 I ViewRootImpl@10ef265[MainActivity]: WindowStopped on com.pocketdev.paynux/com.pocketdev.paynux.MainActivity set to false
+11-03 13:23:52.993  2380  2380 I MSHandlerLifeCycle: removeMultiSplitHandler: no exist. decor=DecorView@16bd57e[MainActivity]
+11-03 13:23:52.993  2380  2380 I ViewRootImpl@10ef265[MainActivity]: stopped(false) old = false
+11-03 13:23:52.995  2380  2380 I DecorView: notifyKeepScreenOnChanged: keepScreenOn=false
+11-03 13:23:52.998  2380  2380 I MSHandlerLifeCycle: removeMultiSplitHandler: no exist. decor=DecorView@16bd57e[MainActivity]
+11-03 13:23:53.006  2380  2380 I ViewRootImpl@10ef265[MainActivity]: performTraversals params={(0,0)(fillxfill) sim={adjust=resize forwardNavigation} ty=BASE_APPLICATION wanim=0x1030309
+11-03 13:23:53.006  2380  2380 I ViewRootImpl@10ef265[MainActivity]:   fl=81810100
+11-03 13:23:53.006  2380  2380 I ViewRootImpl@10ef265[MainActivity]:   pfl=12020040
+11-03 13:23:53.006  2380  2380 I ViewRootImpl@10ef265[MainActivity]:   bhv=DEFAULT
+11-03 13:23:53.006  2380  2380 I ViewRootImpl@10ef265[MainActivity]:   fitSides= naviIconColor=0}
+11-03 13:23:53.007  2380  2380 I ViewRootImpl@10ef265[MainActivity]: performTraversals mFirst=false windowShouldResize=false viewVisibilityChanged=true mForceNextWindowRelayout=false params={(0,0)(fillxfill) sim={adjust=resize forwardNavigation} ty=BASE_APPLICATION wanim=0x1030309
+11-03 13:23:53.007  2380  2380 I ViewRootImpl@10ef265[MainActivity]:   fl=81810100
+11-03 13:23:53.007  2380  2380 I ViewRootImpl@10ef265[MainActivity]:   pfl=12020040
+11-03 13:23:53.007  2380  2380 I ViewRootImpl@10ef265[MainActivity]:   bhv=DEFAULT
+11-03 13:23:53.007  2380  2380 I ViewRootImpl@10ef265[MainActivity]:   fitSides= naviIconColor=0}
+11-03 13:23:53.012  2380  2380 I ViewRootImpl@10ef265[MainActivity]: updateBlastSurfaceIfNeeded mBlastBufferQueue=null isSameSurfaceControl=false
+11-03 13:23:53.013  2380  2380 I BLASTBufferQueue: new BLASTBufferQueue, mName= ViewRootImpl@10ef265[MainActivity] mNativeObject= 0xb400006e68189510 sc.mNativeObject= 0xb400006df819a920 caller= android.view.ViewRootImpl.updateBlastSurfaceIfNeeded:2909 android.view.ViewRootImpl.relayoutWindow:9847 android.view.ViewRootImpl.performTraversals:3884 android.view.ViewRootImpl.doTraversal:3116 android.view.ViewRootImpl$TraversalRunnable.run:10885 android.view.Choreographer$CallbackRecord.run:1301 android.view.Choreographer$CallbackRecord.run:1309 android.view.Choreographer.doCallbacks:923 android.view.Choreographer.doFrame:852 android.view.Choreographer$FrameDisplayEventReceiver.run:1283 
+11-03 13:23:53.013  2380  2380 I BLASTBufferQueue: update, w= 1080 h= 2316 mName = ViewRootImpl@10ef265[MainActivity] mNativeObject= 0xb400006e68189510 sc.mNativeObject= 0xb400006df819a920 format= -1 caller= android.graphics.BLASTBufferQueue.<init>:84 android.view.ViewRootImpl.updateBlastSurfaceIfNeeded:2909 android.view.ViewRootImpl.relayoutWindow:9847 android.view.ViewRootImpl.performTraversals:3884 android.view.ViewRootImpl.doTraversal:3116 android.view.ViewRootImpl$TraversalRunnable.run:10885 
+11-03 13:23:53.013  2380  2380 I ViewRootImpl@10ef265[MainActivity]: Relayout returned: old=(0,0,1080,2316) new=(0,0,1080,2316) req=(1080,2316)0 dur=5 res=0x3 s={true 0xb400006ef81876c0} ch=true seqId=0
+11-03 13:23:53.013  2380  2380 I ViewRootImpl@10ef265[MainActivity]: mThreadedRenderer.initialize() mSurface={isValid=true 0xb400006ef81876c0} hwInitialized=true
+11-03 13:23:53.014  2380  2395 D OpenGLRenderer: eglCreateWindowSurface
+11-03 13:23:53.014  2380  2380 I ViewRootImpl@10ef265[MainActivity]: reportNextDraw android.view.ViewRootImpl.performTraversals:4438 android.view.ViewRootImpl.doTraversal:3116 android.view.ViewRootImpl$TraversalRunnable.run:10885 android.view.Choreographer$CallbackRecord.run:1301 android.view.Choreographer$CallbackRecord.run:1309 
+11-03 13:23:53.014  2380  2380 I ViewRootImpl@10ef265[MainActivity]: Setup new sync id=1
+11-03 13:23:53.014  2380  2380 I ViewRootImpl@10ef265[MainActivity]: Setting syncFrameCallback
+11-03 13:23:53.014  2380  2380 I ViewRootImpl@10ef265[MainActivity]: registerCallbacksForSync syncBuffer=false
+11-03 13:23:53.020  2380  2413 I ViewRootImpl@10ef265[MainActivity]: Received frameDrawingCallback syncResult=0 frameNum=1.
+11-03 13:23:53.020  2380  2413 I ViewRootImpl@10ef265[MainActivity]: Setting up sync and frameCommitCallback
+11-03 13:23:53.020  2380  2395 I BLASTBufferQueue: [ViewRootImpl@10ef265[MainActivity]#1](f:0,a:0) onFrameAvailable the first frame is available
+11-03 13:23:53.020  2380  2395 I ViewRootImpl@10ef265[MainActivity]: Received frameCommittedCallback lastAttemptedDrawFrameNum=1 didProduceBuffer=true
+11-03 13:23:53.020  2380  2380 I ViewRootImpl@10ef265[MainActivity]: onSyncComplete
+11-03 13:23:53.021  2380  2380 I ViewRootImpl@10ef265[MainActivity]: setupSync seqId=0 mSyncId=1 fn=1 caller=android.view.ViewRootImpl$$ExternalSyntheticLambda11.accept:6 android.window.SurfaceSyncer.lambda$setupSync$1$android-window-SurfaceSyncer:128 android.window.SurfaceSyncer$$ExternalSyntheticLambda1.accept:8 android.window.SurfaceSyncer$SyncSet.checkIfSyncIsComplete:382 android.window.SurfaceSyncer$SyncSet.markSyncReady:359 android.window.SurfaceSyncer.markSyncReady:151 android.view.ViewRootImpl.performTraversals:4503 
+11-03 13:23:53.021  2380  2380 I ViewRootImpl@10ef265[MainActivity]: reportDrawFinished seqId=0 mSyncId=-1 fn=1 mSurfaceChangedTransaction=0xb400006e2817f690
+11-03 13:23:53.027  2380  2380 I ViewRootImpl@10ef265[MainActivity]: MSG_WINDOW_FOCUS_CHANGED 1 0
+11-03 13:23:53.027  2380  2380 I ViewRootImpl@10ef265[MainActivity]: mThreadedRenderer.initializeIfNeeded()#2 mSurface={isValid=true 0xb400006ef81876c0}
+11-03 13:23:53.028  2380  2380 D InputMethodManager: startInputInner - Id : 0
+11-03 13:23:53.028  2380  2380 I InputMethodManager: startInputInner - mService.startInputOrWindowGainedFocus
+11-03 13:23:53.523  2380  2646 D ProfileInstaller: Installing profile for com.pocketdev.paynux
+11-03 13:23:53.818  2380  2380 I ViewRootImpl@10ef265[MainActivity]: MSG_WINDOW_FOCUS_CHANGED 0 0
+11-03 13:23:54.181  2380  2380 I ViewRootImpl@10ef265[MainActivity]: handleAppVisibility mAppVisible = true visible = false
+11-03 13:23:54.184  2380  2395 D OpenGLRenderer: setSurface called with nullptr
+11-03 13:23:54.184  2380  2395 D OpenGLRenderer: setSurface() destroyed EGLSurface
+11-03 13:23:54.184  2380  2395 D OpenGLRenderer: destroyEglSurface
+11-03 13:23:54.184  2380  2380 I ViewRootImpl@10ef265[MainActivity]: performTraversals mFirst=false windowShouldResize=false viewVisibilityChanged=true mForceNextWindowRelayout=false params=null
+11-03 13:23:54.191  2380  2380 I ViewRootImpl@10ef265[MainActivity]: Relayout returned: old=(0,0,1080,2316) new=(0,0,1080,2316) req=(1080,2316)8 dur=4 res=0x2 s={false 0x0} ch=true seqId=0
+11-03 13:23:54.197  2380  2380 D InputTransport: Input channel destroyed: 'ClientS', fd=115
+11-03 13:23:54.210  2380  2380 I ViewRootImpl@10ef265[MainActivity]: stopped(true) old = false
+11-03 13:23:54.210  2380  2380 I ViewRootImpl@10ef265[MainActivity]: WindowStopped on com.pocketdev.paynux/com.pocketdev.paynux.MainActivity set to true
+11-03 13:23:54.214  2380  2380 I MSHandlerLifeCycle: removeMultiSplitHandler: no exist. decor=DecorView@16bd57e[MainActivity]

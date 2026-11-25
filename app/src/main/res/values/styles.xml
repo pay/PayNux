@@ -2,7 +2,7 @@
     <style name="AppTheme" parent="android:style/Theme.Material.NoActionBar">
         <item name="android:fontFamily">monospace</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="android:statusBarColor">#0D1117</item>
-        <item name="android:navigationBarColor">#0B0F14</item>
+        <item name="android:statusBarColor">#141416</item>
+        <item name="android:navigationBarColor">#0A0A0C</item>
     </style>
 </resources>
