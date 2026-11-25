@@ -72,6 +72,62 @@ public class MainActivity extends Activity {
     private LinearLayout keyBar;
 
     /** Satu sesi terminal: emulator + shell sendiri. */
+    /** Bar progres merah->oranye. Determinate = isi sesuai fraksi; indeterminate = segmen gradien bergeser. */
+    private static final class GradientBar extends View {
+        private final android.graphics.Paint track = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        private final android.graphics.Paint fill = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        private final android.graphics.RectF rect = new android.graphics.RectF();
+        private float fraction;
+        private boolean indeterminate;
+
+        GradientBar(android.content.Context c) {
+            super(c);
+            track.setColor(Palette.LINE);
+        }
+
+        void setFraction(float f) {
+            fraction = Math.max(0f, Math.min(1f, f));
+            indeterminate = false;
+            invalidate();
+        }
+
+        void setIndeterminate(boolean on) {
+            if (indeterminate != on) {
+                indeterminate = on;
+                invalidate();
+            }
+        }
+
+        @Override protected void onDraw(android.graphics.Canvas cv) {
+            float w = getWidth();
+            float h = getHeight();
+            if (w <= 0 || h <= 0) return;
+            float r = h / 2f;
+            rect.set(0, 0, w, h);
+            cv.drawRoundRect(rect, r, r, track);
+            float left;
+            float right;
+            if (indeterminate) {
+                float seg = w * 0.35f;
+                float t = (android.os.SystemClock.uptimeMillis() % 1400L) / 1400f;
+                left = -seg + (w + seg) * t;
+                right = left + seg;
+            } else {
+                left = 0f;
+                right = w * fraction;
+            }
+            left = Math.max(0f, left);
+            right = Math.min(w, right);
+            if (right - left > 0.5f) {
+                fill.setShader(new android.graphics.LinearGradient(left, 0f, right, 0f,
+                        Palette.RED_FILL, Palette.ORANGE, android.graphics.Shader.TileMode.CLAMP));
+                rect.set(left, 0f, right, h);
+                cv.drawRoundRect(rect, r, r, fill);
+            }
+            if (indeterminate) postInvalidateOnAnimation();
+        }
+    }
+
     /** TextView terminal: tidak boleh men-scroll dirinya sendiri (itu yang membuat teks goyang saat disentuh). */
     private static final class PinnedTextView extends TextView {
         PinnedTextView(android.content.Context c) { super(c); }
@@ -448,7 +504,7 @@ public class MainActivity extends Activity {
             p.setTypeface(monoTypeface());
             p.setTextSize(fontSizeSp * dm.scaledDensity);
             float cw = p.measureText("M");
-            if (cw > 0) return Math.max(20, (int) ((dm.widthPixels - 32) / cw));
+            if (cw > 0) return Math.max(20, (int) ((dm.widthPixels - dp(34)) / cw));
         } catch (Exception ignored) { }
         return 40;
     }
@@ -732,7 +788,7 @@ public class MainActivity extends Activity {
         screenView.setTextSize(fontSizeSp);
         screenView.setTypeface(monoTypeface());
         screenView.setGravity(Gravity.TOP | Gravity.START);
-        screenView.setPadding(16, 0, 16, 4);
+        screenView.setPadding(dp(10), dp(4), dp(10), dp(4));
         screenView.setTextIsSelectable(true); // SELECT: crash isolation test
         installCopyAllSelectionAction(screenView);
         screenView.setIncludeFontPadding(false);
@@ -741,13 +797,13 @@ public class MainActivity extends Activity {
 
         LinearLayout inner = new LinearLayout(this);
         inner.setOrientation(LinearLayout.VERTICAL);
-        inner.setBackgroundColor(BG);
+        inner.setBackgroundColor(Color.TRANSPARENT);
         inner.addView(screenView, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
 
         terminalScroll = new SteadyScrollView(this);
-        terminalScroll.setBackgroundColor(BG);
+        terminalScroll.setBackgroundColor(Color.TRANSPARENT);
         terminalScroll.setFillViewport(true);
         terminalScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);   // tanpa efek regang di tepi
         terminalScroll.addView(inner, new ScrollView.LayoutParams(
@@ -909,8 +965,21 @@ public class MainActivity extends Activity {
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(16)));
         refreshTabs();
 
-        root.addView(terminalScroll, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1));
+        // terminal di dalam kotak berbingkai tipis (gaya setup.log)
+        android.widget.FrameLayout termBox = new android.widget.FrameLayout(this);
+        android.graphics.drawable.GradientDrawable termBg = new android.graphics.drawable.GradientDrawable();
+        termBg.setColor(themeIdx == 0 ? Palette.PANEL_IN : THEMES[themeIdx][0]);
+        termBg.setCornerRadius(dp(12));
+        termBg.setStroke(dp(1), themeIdx == 0 ? Palette.EDGE : THEMES[themeIdx][4]);
+        termBox.setBackground(termBg);
+        termBox.setClipToOutline(true);
+        termBox.addView(terminalScroll, new android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
+        LinearLayout.LayoutParams tblp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1);
+        tblp.setMargins(dp(6), dp(4), dp(6), dp(4));
+        root.addView(termBox, tblp);
         root.addView(hiddenInput, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 1));
         root.addView(keyBar, new LinearLayout.LayoutParams(
@@ -2725,8 +2794,10 @@ public class MainActivity extends Activity {
     private void measureTerminal() {
         if (emulator == null || terminalScroll == null || screenView == null)
             return;
-        int vw = terminalScroll.getWidth() - 32;
-        int vh = terminalScroll.getHeight();
+        int vw = terminalScroll.getWidth()
+                - screenView.getPaddingLeft() - screenView.getPaddingRight();
+        int vh = terminalScroll.getHeight()
+                - screenView.getPaddingTop() - screenView.getPaddingBottom();
         if (vw <= 0 || vh <= 0) return;
         float charW = screenView.getPaint().measureText("M");
         int lineH = screenView.getLineHeight();
@@ -3538,8 +3609,8 @@ public class MainActivity extends Activity {
         screenView.getLocationOnScreen(viewLoc);
         int[] scrollLoc = new int[2];
         terminalScroll.getLocationOnScreen(scrollLoc);
-        float fx = x + scrollLoc[0] - viewLoc[0];
-        float fy = y + scrollLoc[1] - viewLoc[1];
+        float fx = x + scrollLoc[0] - viewLoc[0] - screenView.getPaddingLeft();
+        float fy = y + scrollLoc[1] - viewLoc[1] - screenView.getPaddingTop();
         float charW = screenView.getPaint().measureText("M");
         int lineH = screenView.getLineHeight();
         if (charW <= 0 || lineH <= 0) return null;
@@ -4192,7 +4263,7 @@ public class MainActivity extends Activity {
 
     private android.widget.FrameLayout setupOverlay;
     private TextView setupTitleTv, setupSubTv, setupStageTv, setupPctTv, setupSizeTv, setupLogTv;
-    private android.widget.ProgressBar setupBar;
+    private GradientBar setupBar;
     private ScrollView setupLogScroll;
     private LinearLayout setupButtons;
     private View[] setupDots;
@@ -4297,6 +4368,7 @@ public class MainActivity extends Activity {
                         if (par instanceof android.view.ViewGroup) {
                             ((android.view.ViewGroup) par).removeView(ov);
                         }
+                        getWindow().setStatusBarColor(THEMES[themeIdx][3]);
                     }).start();
         }
     }
@@ -4321,6 +4393,7 @@ public class MainActivity extends Activity {
             }
             setupOverlay = null;
         }
+        getWindow().setStatusBarColor(THEMES[themeIdx][3]);
     }
 
     private TextView setupButton(String label, int color, View.OnClickListener click) {
@@ -4452,23 +4525,7 @@ public class MainActivity extends Activity {
         col.addView(stageRow, srlp);
 
         // bar progres (merah -> oranye)
-        setupBar = new android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
-        setupBar.setMax(1000);
-        android.graphics.drawable.GradientDrawable trackShape = new android.graphics.drawable.GradientDrawable();
-        trackShape.setColor(Palette.LINE);
-        trackShape.setCornerRadius(dp(3));
-        android.graphics.drawable.GradientDrawable fillShape = new android.graphics.drawable.GradientDrawable(
-                android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
-                new int[]{Palette.RED_FILL, Palette.ORANGE});
-        fillShape.setCornerRadius(dp(3));
-        android.graphics.drawable.ClipDrawable clip = new android.graphics.drawable.ClipDrawable(
-                fillShape, Gravity.START, android.graphics.drawable.ClipDrawable.HORIZONTAL);
-        android.graphics.drawable.LayerDrawable pld = new android.graphics.drawable.LayerDrawable(
-                new android.graphics.drawable.Drawable[]{trackShape, clip});
-        pld.setId(0, android.R.id.background);
-        pld.setId(1, android.R.id.progress);
-        setupBar.setProgressDrawable(pld);
-        setupBar.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(Palette.ORANGE));
+        setupBar = new GradientBar(this);
         LinearLayout.LayoutParams blp3 = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(6));
         blp3.topMargin = dp(8);
@@ -4569,6 +4626,7 @@ public class MainActivity extends Activity {
                 android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
                 android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
         setupOverlay = ov;
+        getWindow().setStatusBarColor(Palette.BG);   // menyatu dengan layar setup
         renderSetup();
     }
 
@@ -4611,14 +4669,12 @@ public class MainActivity extends Activity {
         String pct = "";
         String size = "";
         if (step >= SETUP_STEPS.length) {
-            setupBar.setIndeterminate(false);
-            setupBar.setProgress(1000);
+            setupBar.setFraction(1f);
             pct = "100%";
         } else if (failed) {
             setupBar.setIndeterminate(false);
         } else if (t > 0) {
-            setupBar.setIndeterminate(false);
-            setupBar.setProgress((int) Math.min(1000L, d * 1000L / t));
+            setupBar.setFraction((float) d / (float) t);
             pct = (d * 100L / t) + "%";
             size = String.format(java.util.Locale.US, "%.1f / %.1f MB", d / 1048576.0, t / 1048576.0);
         } else {
