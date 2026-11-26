@@ -31,6 +31,42 @@ public class KeepAliveService extends Service {
     private PowerManager.WakeLock wakeLock;
     private WifiManager.WifiLock wifiLock;
 
+    private static volatile KeepAliveService instance;
+    private static volatile boolean held;
+
+    public static boolean isHeld() {
+        return held;
+    }
+
+    /** Nyalakan/matikan wakelock dari aplikasi (mode Keep alive Auto/On/Off). */
+    public static void setLocks(android.content.Context c, boolean on) {
+        KeepAliveService svc = instance;
+        if (svc != null) {
+            if (on) svc.acquireLocks(); else svc.releaseLocks();
+            svc.refreshNotification();
+            return;
+        }
+        try {
+            Intent i = new Intent(c, KeepAliveService.class)
+                    .setAction(on ? ACTION_WAKELOCK_ON : ACTION_WAKELOCK_OFF);
+            if (Build.VERSION.SDK_INT >= 26) c.startForegroundService(i);
+            else c.startService(i);
+        } catch (Throwable ignored) { }
+    }
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        instance = this;
+    }
+
+    private void refreshNotification() {
+        try {
+            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            if (nm != null) nm.notify(NOTIF_ID, buildNotification());
+        } catch (Throwable ignored) { }
+    }
+
     @Override
     public IBinder onBind(Intent intent) {
         return null;
@@ -51,6 +87,8 @@ public class KeepAliveService extends Service {
     @Override
     public void onDestroy() {
         releaseLocks();
+        instance = null;
+        held = false;
         super.onDestroy();
     }
 
@@ -68,6 +106,7 @@ public class KeepAliveService extends Service {
             }
             if (!wakeLock.isHeld()) wakeLock.acquire();   // tanpa timeout, seperti Termux
         } catch (Throwable ignored) { }
+        held = locksHeld();
         try {
             if (wifiLock == null) {
                 WifiManager wm = (WifiManager) getApplicationContext()
@@ -83,6 +122,7 @@ public class KeepAliveService extends Service {
     }
 
     private void releaseLocks() {
+        held = false;
         try { if (wakeLock != null && wakeLock.isHeld()) wakeLock.release(); }
         catch (Throwable ignored) { }
         try { if (wifiLock != null && wifiLock.isHeld()) wifiLock.release(); }

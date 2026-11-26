@@ -84,6 +84,8 @@ public final class TerminalEmulator {
     /** Optional: called when the shell reports that a long command finished (OSC 777 paynux-done). */
     public interface CommandListener {
         void onCommandDone(int exit, long seconds, String cmd);
+        /** Shell mulai (true) / selesai (false) menjalankan perintah; dasar wakelock otomatis. */
+        void onBusy(boolean busy);
     }
 
     private volatile CommandListener commandListener;
@@ -385,6 +387,9 @@ public final class TerminalEmulator {
             CommandListener cl = commandListener;
             com.paynux.compat.CommandDone.Event ev = com.paynux.compat.CommandDone.parse(s);
             if (cl != null && ev != null) cl.onCommandDone(ev.exit, ev.seconds, ev.cmd);
+        } else if (s.startsWith("777;paynux-busy;")) {
+            CommandListener cl = commandListener;
+            if (cl != null) cl.onBusy(s.endsWith(";1"));
         }
         osc.setLength(0);
     }

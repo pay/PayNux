@@ -27,6 +27,7 @@ public final class CommandDone {
             + "  __paynux_x=x   # must be non-empty: PS0's offset trick below is skipped for unset/empty variables\n"
             + "  __paynux_precmd() {\n"
             + "    local rc=$?\n"
+            + "    printf '\\033]777;paynux-busy;0\\007'   # idle: app boleh melepas wakelock otomatis\n"
             + "    if [ \"${__paynux_run:-0}\" = 1 ]; then\n"
             + "      __paynux_run=0\n"
             + "      local thr=${PAYNUX_NOTIFY_AFTER:-10}\n"
@@ -40,7 +41,7 @@ public final class CommandDone {
             + "    return $rc\n"
             + "  }\n"
             + "  PROMPT_COMMAND=\"__paynux_precmd${PROMPT_COMMAND:+;$PROMPT_COMMAND}\"\n"
-            + "  PS0=\"${PS0:-}\"'${__paynux_x:$((__paynux_t0=SECONDS,__paynux_run=1,0)):0}'\n"
+            + "  PS0=\"${PS0:-}\"'${__paynux_x:$((__paynux_t0=SECONDS,__paynux_run=1,0)):0}\\e]777;paynux-busy;1\\a'\n"
             + "fi\n";
 
     public static final class Event {

@@ -159,6 +159,8 @@ public class MainActivity extends Activity {
         volatile boolean exited;
         volatile boolean closing;   // ditutup sengaja (bukan exit tak terduga)
         volatile String name;       // nama pilihan pengguna (null = "Session N"), hanya di memori
+        volatile boolean busy;      // shell sedang menjalankan perintah (dari hook OSC)
+        volatile long busyAt;       // elapsedRealtime saat perintah mulai
         Sess(int id) { this.id = id; }
     }
 
@@ -264,6 +266,7 @@ public class MainActivity extends Activity {
             if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(keep);
             else startService(keep);
         } catch (Throwable ignored) { }
+        keepApplyMode(true);
 
         boolean fresh = (emulator == null);
         if (fresh) {
@@ -408,6 +411,110 @@ public class MainActivity extends Activity {
         }
     }
 
+    // ============================================================
+    // KEEP ALIVE: wakelock otomatis saat ada perintah yang berjalan lama
+    //   Auto (default) = kunci bila perintah >= 10 dtk, lepas 30 dtk setelah semua idle
+    //   On = selalu kunci, Off = hanya manual lewat notifikasi
+    // ============================================================
+
+    private static final int KEEP_OFF = 0, KEEP_AUTO = 1, KEEP_ON = 2;
+    private static final long KEEP_AFTER_MS = 10000L;
+    private static final long KEEP_RELEASE_MS = 30000L;
+    private static final long KEEP_RECHECK_MS = 15000L;
+    private static final android.os.Handler keepHandler =
+            new android.os.Handler(android.os.Looper.getMainLooper());
+    private static final Runnable keepTick = MainActivity::keepEvaluate;
+    private static boolean keepAutoHeld;
+    private static long keepLastBusySeen;
+
+    private static int keepMode() {
+        if (appCtx == null) return KEEP_AUTO;
+        return appCtx.getSharedPreferences("paynux_ui", Context.MODE_PRIVATE)
+                .getInt("keep_mode", KEEP_AUTO);
+    }
+
+    private static void keepSetMode(int mode) {
+        if (appCtx == null) return;
+        appCtx.getSharedPreferences("paynux_ui", Context.MODE_PRIVATE)
+                .edit().putInt("keep_mode", mode).apply();
+        keepApplyMode(false);
+    }
+
+    private static String keepLabel(int mode) {
+        return mode == KEEP_ON ? "On" : (mode == KEEP_OFF ? "Off" : "Auto");
+    }
+
+    /** Terapkan mode saat ini (startup = true: jangan melepas kunci yang mungkin sudah dipegang). */
+    private static void keepApplyMode(boolean startup) {
+        keepHandler.removeCallbacks(keepTick);
+        if (appCtx == null) return;
+        int mode = keepMode();
+        keepAutoHeld = false;
+        if (mode == KEEP_ON) {
+            KeepAliveService.setLocks(appCtx, true);
+        } else if (mode == KEEP_OFF) {
+            if (!startup) KeepAliveService.setLocks(appCtx, false);
+        } else {
+            if (!startup) KeepAliveService.setLocks(appCtx, false);
+            keepEvaluate();
+        }
+    }
+
+    /** Dari thread mana pun: evaluasi ulang di main thread. */
+    private static void keepKick() {
+        keepHandler.post(keepTick);
+    }
+
+    private static void keepEvaluate() {
+        keepHandler.removeCallbacks(keepTick);
+        if (appCtx == null || keepMode() != KEEP_AUTO) return;
+        long now = android.os.SystemClock.elapsedRealtime();
+        boolean anyBusy = false;
+        long oldest = Long.MAX_VALUE;
+        for (Sess sc : sessions) {
+            if (sc.busy && !sc.exited) {
+                anyBusy = true;
+                oldest = Math.min(oldest, sc.busyAt);
+            }
+        }
+        if (anyBusy) {
+            keepLastBusySeen = now;
+            if (!keepAutoHeld) {
+                long age = now - oldest;
+                if (age >= KEEP_AFTER_MS) {
+                    keepAutoHeld = true;
+                    KeepAliveService.setLocks(appCtx, true);
+                    keepHandler.postDelayed(keepTick, KEEP_RECHECK_MS);
+                } else {
+                    keepHandler.postDelayed(keepTick, KEEP_AFTER_MS - age);
+                }
+            } else {
+                keepHandler.postDelayed(keepTick, KEEP_RECHECK_MS);
+            }
+        } else if (keepAutoHeld) {
+            long since = now - keepLastBusySeen;
+            if (since >= KEEP_RELEASE_MS) {
+                keepAutoHeld = false;
+                KeepAliveService.setLocks(appCtx, false);
+            } else {
+                keepHandler.postDelayed(keepTick, KEEP_RELEASE_MS - since);
+            }
+        }
+    }
+
+    /** Ketuk item sidebar: Auto -> On -> Off -> Auto. */
+    private void cycleKeepAlive() {
+        int m = keepMode();
+        int next = m == KEEP_AUTO ? KEEP_ON : (m == KEEP_ON ? KEEP_OFF : KEEP_AUTO);
+        keepSetMode(next);
+        String msg = next == KEEP_AUTO
+                ? "Keep alive: Auto - wake lock while a command runs 10s+"
+                : (next == KEEP_ON
+                ? "Keep alive: On - wake lock always held (uses more battery)"
+                : "Keep alive: Off - wake lock only from the notification");
+        android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show();
+    }
+
     private void reportPreviousExit() {
         if (android.os.Build.VERSION.SDK_INT < 30) return;
         pruneExitLog();
@@ -443,6 +550,13 @@ public class MainActivity extends Activity {
             // USER_REQUESTED, USER_STOPPED, update, SIGNAL) senyap agar
             // tidak ada "[!] Last run ended" yang barisnya sudah tidak
             // dicatat di paynux-exit.log.
+            if (r == 2 || r == 3 || r == 9 || r == 14) {   // SIGNALED, LOW_MEMORY, EXCESSIVE_RESOURCE, FREEZER
+                appendOutput("\u001b[33m[!] Last run was killed by Android: " + name + ". Sessions were lost.\u001b[0m\n"
+                        + "\u001b[90m    Sidebar > Keep alive: On, and set Battery > Unrestricted for Paynux.\u001b[0m\n\n");
+                addNotif("warn", "App was killed by Android",
+                        "Last run ended: " + name + ". Set Keep alive to On and Battery to Unrestricted.");
+                return;
+            }
             if (r != 5) return;
             appendOutput("\u001b[33m[!] Last run ended: " + name
                     + " (status " + i.getStatus() + ")\u001b[0m\n"
@@ -1983,6 +2097,9 @@ public class MainActivity extends Activity {
         box.addView(drawerItem("+  New session", Palette.ORANGE, this::newSession));
         box.addView(drawerItem("x  Close session", Palette.RED, () -> { if (active != null) confirmCloseSession(active); }));
         box.addView(drawerItem("~  Reset terminal", Palette.TEXT, this::resetTerminal));
+        box.addView(drawerItem("#  Keep alive: " + keepLabel(keepMode())
+                + (KeepAliveService.isHeld() ? "  (locked)" : ""),
+                KeepAliveService.isHeld() ? Palette.AMBER : Palette.TEXT, this::cycleKeepAlive));
 
         LinearLayout notif = drawerItemRow("!  Notifications", Palette.TEXT,
                 this::showNotificationCenter);
@@ -2852,6 +2969,11 @@ public class MainActivity extends Activity {
             @Override public void onCommandDone(int exit, long seconds, String cmd) {
                 onCommandFinished(sc, exit, seconds, cmd);
             }
+            @Override public void onBusy(boolean busy) {
+                if (busy && !sc.busy) sc.busyAt = android.os.SystemClock.elapsedRealtime();
+                sc.busy = busy;
+                keepKick();
+            }
         });
         return sc;
     }
@@ -2919,8 +3041,14 @@ public class MainActivity extends Activity {
                 final boolean wasReady = sc.ready;
                 sc.ready = false;
                 sc.exited = true;
+                sc.busy = false;
+                keepKick();
+                final boolean killed = (code == 137 || code == -9);   // SIGKILL
                 if (wasReady && !sc.closing) {
-                    if (code == 0) {
+                    if (killed) {
+                        addNotif("warn", "Session killed by Android",
+                                sessionTitle(sc) + " got signal 9. Open the terminal for the fix.");
+                    } else if (code == 0) {
                         addNotif("info", "Session ended",
                                 sessionTitle(sc) + " exited normally.");
                     } else {
@@ -2929,6 +3057,13 @@ public class MainActivity extends Activity {
                     }
                 }
                 feedTo(sc.emu, "\n\n[Ubuntu process exited] code=" + code + "\n");
+                if (killed && wasReady && !sc.closing) {
+                    feedTo(sc.emu, "[!] Killed by Android (signal 9). Likely the Phantom Process Killer\n"
+                            + "    (Android 12+) or low memory. To fix:\n"
+                            + "    1. Developer options > Disable child process restrictions (Android 14+)\n"
+                            + "    2. Sidebar > Keep alive: set to On (or leave Auto)\n"
+                            + "    3. Settings > Apps > Paynux > Battery > Unrestricted\n");
+                }
                 if (sessions.size() <= 1) {
                     feedTo(sc.emu, "[Tap the session button, long-press this session, then Close session"
                             + " to start a new one]\n");
