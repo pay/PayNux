@@ -5,6 +5,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- paynux-install: pasang APK hasil build lewat PackageInstaller -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Akses /sdcard dari dalam rootfs (app targetSdk 28 = legacy storage).
          JANGAN pakai maxSdkVersion: pada API 33 izin jadi tidak ada sama sekali
          dan /sdcard berakhir "Permission denied". -->
@@ -31,6 +33,10 @@
             </intent-filter>
 
         </activity>
+
+        <receiver
+            android:name=".InstallResultReceiver"
+            android:exported="false" />
 
         <service
             android:name=".KeepAliveService"

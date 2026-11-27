@@ -5607,6 +5607,7 @@ public class MainActivity extends Activity {
             File host = new File(bin, "hostname");
             writeText(host, HOSTNAME_SH);
             host.setExecutable(true, false);
+            BridgeScripts.write(ubuntuDir);   // paynux-notify / -install / -open, xdg-open
         } catch (Exception e) {
             bootLog("[!] writeTerminalTools: " + e + "\n");
         }
@@ -6066,6 +6067,15 @@ public class MainActivity extends Activity {
 
     /** True while the Activity is visible: "command finished" notifications are only shown in the background. */
     private static volatile boolean appVisible;
+
+    static boolean isAppVisible() {
+        return appVisible;
+    }
+
+    /** Akar rootfs Ubuntu di sisi host (null sebelum runtime siap). */
+    static File ubuntuRoot() {
+        return ubuntuDir;
+    }
 
     @Override
     protected void onStart() {

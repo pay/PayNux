@@ -58,6 +58,7 @@ public class KeepAliveService extends Service {
     public void onCreate() {
         super.onCreate();
         instance = this;
+        BridgeServer.start(getApplicationContext());   // jembatan paynux-notify/install/open
     }
 
     private void refreshNotification() {
@@ -89,6 +90,7 @@ public class KeepAliveService extends Service {
         releaseLocks();
         instance = null;
         held = false;
+        BridgeServer.stop();
         super.onDestroy();
     }
 
